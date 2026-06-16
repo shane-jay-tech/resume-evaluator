@@ -1,0 +1,17 @@
+.env
+.pid
+__pycache__/
+*.pyc
+data/
+logs/
+backups/
+archives/
+reports/
+dist/
+build/
+references/
+*.json
+*.spec.bak
+.DS_Store
+# Demo 前端页面（独立项目）
+*.html

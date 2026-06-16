@@ -1,0 +1,179 @@
+# ═══════════════════════════════════════════════════════════
+# 简历评估系统 — 配置文件
+# ═══════════════════════════════════════════════════════════
+
+server:
+  host: 127.0.0.1
+  port: 18980
+  cors_origin: "http://127.0.0.1:18980"
+
+monitor:
+  directories:
+  - ~/Downloads
+
+database:
+  path: data/recruitment.db
+
+logging:
+  level: INFO
+  retention_days: 7
+  path: logs/app.log
+
+ocr:
+  preprocess_enabled: true
+  threshold: 128
+
+report:
+  company_name: 游戏公司
+  dir: ./reports
+
+llm:
+  api_key_env: DEEPSEEK_API_KEY
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+  max_tokens: 4096
+  temperature: 0.3
+  max_retries: 2
+  timeout: 300.0
+
+# ── 交叉校验（可选，需要额外配置 Claude API） ──
+cross_validation:
+  enabled: false
+  api_key_env: CLAUDE_API_KEY
+  base_url: ""
+  model: claude-opus-4-6
+  min_score_trigger: 85
+  max_tokens: 4096
+  timeout: 180.0
+  max_retries: 2
+
+# ── 数据管理 ──
+archive:
+  enabled: true
+  retention_days: 90
+
+cleanup:
+  interval_hours: 24
+  retention_days: 5
+
+backup:
+  interval_hours: 6
+  retention_days: 30
+
+# ── 招聘漏斗基线 ──
+funnel:
+  baselines:
+    screen_to_interview_ratio: 0.20
+    interview_to_pass_ratio: 0.30
+
+# ═══════════════════════════════════════════════════════════
+# 岗位配置
+#
+# 每个岗位包含：
+#   name: 岗位名称
+#   aliases: 别名（用于简历文件名匹配）
+#   enabled: true/false
+#   dimensions: 评估维度及其权重（4个维度，权重和=1.0）
+#   must_have: 必备条件
+#   nice_to_have: 加分项
+#   education: 学历要求
+#   experience: 经验要求
+#   other_requirements: 其他要求
+#   scoring: 各维度评分标准
+#
+# 参考下方示例岗位，按需添加你的岗位。
+# ═══════════════════════════════════════════════════════════
+
+positions:
+
+  # ── 示例岗位 1：策划类 ──
+  - name: "游戏策划"
+    aliases:
+    - "策划"
+    - "关卡策划"
+    - "系统策划"
+    enabled: true
+    dimensions:
+    - name: "专业技能"
+      weight: 0.35
+      desc: "岗位核心技能匹配度"
+    - name: "项目经验"
+      weight: 0.35
+      desc: "相关项目经验年限和质量"
+    - name: "学历匹配"
+      weight: 0.1
+      desc: "学历和专业背景"
+    - name: "综合评价"
+      weight: 0.2
+      desc: "综合素质和发展潜力"
+    must_have:
+    - "相关工作经验（根据级别调整年限要求）"
+    - "能独立完成核心工作交付"
+    nice_to_have:
+    - "有上线项目经验"
+    education: "本科及以上学历"
+    experience: "根据级别确定年限"
+    other_requirements: "请在此填写岗位的特殊要求、注意事项等"
+    scoring:
+      skill_match: "考察专业技能的深度和广度"
+      experience_match: "考察项目经验的匹配度"
+      education_match: "学历专业匹配度"
+      overall: "综合能力评估"
+
+  # ── 示例岗位 2：技术类 ──
+  - name: "游戏开发工程师"
+    aliases:
+    - "开发工程师"
+    - "游戏开发"
+    - "服务器开发"
+    - "客户端开发"
+    enabled: true
+    dimensions:
+    - name: "技术能力"
+      weight: 0.4
+      desc: "编程语言、框架、架构设计能力"
+    - name: "游戏开发经验"
+      weight: 0.3
+      desc: "游戏行业项目经验"
+    - name: "学历匹配"
+      weight: 0.1
+      desc: "学历和专业背景"
+    - name: "综合评价"
+      weight: 0.2
+      desc: "综合素质和团队协作"
+    must_have:
+    - "本科及以上学历，计算机相关专业"
+    - "扎实的编程基础和数据结构功底"
+    - "良好的沟通协作能力"
+    nice_to_have:
+    - "有上线游戏项目经验"
+    - "熟悉常用游戏引擎或框架"
+    education: "本科及以上学历，计算机相关专业"
+    experience: "根据级别确定年限"
+    other_requirements: "请在此填写岗位的特殊要求、使用的技术栈等"
+    scoring:
+      skill_match: "考察技术栈深度和广度"
+      experience_match: "考察游戏行业经验"
+      education_match: "学历专业匹配度"
+      overall: "综合能力评估"
+
+# ═══════════════════════════════════════════════════════════
+# 任务路由规则
+# ═══════════════════════════════════════════════════════════
+
+router:
+  rules:
+  - keywords: ["设计", "架构", "规划", "方案", "技术选型"]
+    target: "pipeline:dev_flow"
+    description: "需要架构设计 → 完整开发流程"
+  - keywords: ["写代码", "实现", "开发", "编程"]
+    target: "model:deepseek"
+    description: "纯编码任务 → DeepSeek 主力输出"
+  - keywords: ["审查", "review", "检查代码", "安全审计"]
+    target: "model:claude"
+    description: "审查任务 → Claude 深度审查"
+  - keywords: ["分析", "解释", "调研"]
+    target: "model:gpt55"
+    description: "分析理解 → GPT-5.5 深度推理"
+  default_model: "gpt55"
+  llm_fallback: true

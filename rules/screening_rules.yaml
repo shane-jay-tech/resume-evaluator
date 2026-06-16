@@ -1,0 +1,21 @@
+# 硬性筛选规则 — 参考示例
+#
+# 格式说明：
+#   id: 规则唯一标识
+#   position: 适用岗位名称（或 "通用"）
+#   condition: 匹配条件
+#   action: 命中后的动作（reject / hold / flag / downgrade）
+#   priority: 优先级（数字越大越优先）
+#   reason: 规则说明
+
+rules:
+
+  # ── 示例：通用规则 ──
+  - id: example_reject_fresh
+    position: "通用"
+    condition: "不超过 1 年正式工作经验"
+    action: hold
+    priority: 10
+    reason: "经验不足，放入待定池"
+
+  # ── 在此添加你的筛选规则 ──
