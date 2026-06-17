@@ -110,6 +110,9 @@ class ResumeHandler(FileSystemEventHandler):
 
 def scan_existing(watch_dir: str, store, process_callback):
     """扫描目录中已有但未处理的文件。"""
+    if not os.path.isdir(watch_dir):
+        logger.warning("监控目录不存在，跳过扫描: %s", watch_dir)
+        return
     extensions = {".pdf", ".docx", ".doc", ".jpeg", ".jpg", ".png"}
     from parser import file_hash
 

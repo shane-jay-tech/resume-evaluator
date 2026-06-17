@@ -1,4 +1,4 @@
-"""Claude 交叉校验模块 — 对 DeepSeek 高分评估结果进行二次校验。
+"""Claude 交叉校验模块 — 对主评估结果进行二次校验。
 
 触发条件：match_score >= 85（强烈推荐级别）。
 对比两个模型的评分差异，标注需要人工关注的案例。
@@ -6,6 +6,7 @@
 
 import json
 import logging
+import os
 import time
 from datetime import datetime
 
@@ -45,26 +46,44 @@ class CrossValidator:
 
     def __init__(self, config: dict):
         cv_cfg = config.get("cross_validation", {})
-        api_key = cv_cfg.get("api_key") or config.get("llm", {}).get("api_key")
-        base_url = cv_cfg.get("base_url", "")  # 需在 config.yaml 中配置 Claude 代理地址
+        # api_key 优先从环境变量读取
+        api_key_env = cv_cfg.get("api_key_env", "CLAUDE_API_KEY")
+        api_key = cv_cfg.get("api_key") or os.getenv(api_key_env, "") or config.get("llm", {}).get("api_key")
+        base_url = cv_cfg.get("base_url", "")
         self.model = cv_cfg.get("model", "claude-opus-4-6")
         self.enabled = cv_cfg.get("enabled", False)
         self.min_score_trigger = cv_cfg.get("min_score_trigger", 85)
         self.max_tokens = cv_cfg.get("max_tokens", 4096)
-        self.timeout = cv_cfg.get("timeout", 180.0)  # 默认 3 分钟
-        self.max_retries = cv_cfg.get("max_retries", 2)  # 最多重试 2 次
+        self.timeout = cv_cfg.get("timeout", 180.0)
+        self.max_retries = cv_cfg.get("max_retries", 2)
 
         if not api_key:
             self.enabled = False
-            logger.warning("未配置 cross_validation.api_key，Claude 交叉校验已禁用")
+            logger.warning("未配置 Claude API Key，交叉校验已禁用")
             self._client = None
             return
 
-        self._client = anthropic.Anthropic(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=self.timeout,
-        )
+        if not base_url:
+            self.enabled = False
+            logger.warning("未配置 cross_validation.base_url，交叉校验已禁用")
+            self._client = None
+            return
+
+        try:
+            import anthropic
+            import httpx
+            client_kwargs = {"api_key": api_key, "timeout": httpx.Timeout(self.timeout)}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            self._client = anthropic.Anthropic(**client_kwargs)
+        except ImportError:
+            self.enabled = False
+            logger.warning("anthropic 库未安装，交叉校验已禁用")
+            self._client = None
+        except Exception as e:
+            self.enabled = False
+            logger.warning("Claude 客户端初始化失败: %s", e)
+            self._client = None
 
     @property
     def is_enabled(self) -> bool:
@@ -137,7 +156,6 @@ class CrossValidator:
 
         for attempt in range(attempts):
             try:
-                import anthropic  # 懒加载，仅在启用且实际调用时导入
                 t0 = time.time()
                 resp = self._client.messages.create(
                     model=self.model,

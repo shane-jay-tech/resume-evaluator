@@ -1723,9 +1723,8 @@ document.getElementById('setupForm').addEventListener('submit', async (e) => {
 </html>"""
 
 
-def post_test_connection(handler):
+def post_test_connection(handler, body: str = ""):
     """测试 API 连接（检测按钮）。"""
-    body = _read_body(handler)
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
@@ -1784,9 +1783,8 @@ def get_setup_defaults(handler):
     })
 
 
-def post_setup(handler):
+def post_setup(handler, body: str = ""):
     """保存首次设置到 .env。"""
-    body = _read_body(handler)
     try:
         data = json.loads(body)
     except json.JSONDecodeError:

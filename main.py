@@ -188,7 +188,7 @@ def start_dashboard_server() -> ThreadingHTTPServer:
     # 端口被占用时尝试下一个端口
     for offset in range(10):
         try:
-            server = ThreadingHTTPServer((host, port + offset), server_bind_and_activate=True)
+            server = ThreadingHTTPServer((host, port + offset), APIHandler)
             if offset > 0:
                 logger.warning("端口 %d 被占用，使用端口 %d", port, port + offset)
                 config["server"]["_actual_port"] = port + offset
@@ -267,6 +267,7 @@ def main():
     else:
         config_path = get_config_path()
     os.chdir(os.path.dirname(config_path) if os.path.isfile(config_path) else get_user_dir())
+    project_dir = os.getcwd()  # 初始化全局 project_dir
 
     pidfile = os.path.join(project_dir, ".pid")
 
