@@ -144,8 +144,9 @@ class APIHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
 
-        # 认证（写操作需要 token）
-        if path != "/api/health" and not _check_auth(self):
+        # 认证（首次配置和健康检查免认证）
+        skip_auth = path in ("/api/health", "/api/test-connection", "/api/setup")
+        if not skip_auth and not _check_auth(self):
             _respond_json(self, {"ok": False, "error": "未授权"}, 401)
             return
 
