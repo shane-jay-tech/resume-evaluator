@@ -155,7 +155,11 @@ class APIHandler(SimpleHTTPRequestHandler):
         handler = POST_ROUTES.get(path)
         if handler:
             handler(self, body)
-            return
+        else:
+            import sys as _sys
+            print(f"[DEBUG] POST {path} - NO HANDLER FOUND in {list(POST_ROUTES.keys())[:5]}...", file=_sys.stderr, flush=True)
+            _respond_json(self, {"ok": False, "error": f"未知端点: {path}"}, 404)
+        return
 
         # 兼容子路径
         for route_path, handler in POST_ROUTES.items():

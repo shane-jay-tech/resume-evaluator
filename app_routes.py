@@ -1723,17 +1723,16 @@ document.getElementById('setupForm').addEventListener('submit', async (e) => {
 </html>"""
 
 
-def post_test_connection(handler, body: str = ""):
-    """测试 API 连接（检测按钮）。"""
-    try:
-        data = json.loads(body)
-    except json.JSONDecodeError:
-        _respond_json(handler, {"ok": False, "error": "JSON 格式错误"}, 400)
-        return
+def post_test_connection(handler, body):
+    """测试 API 连接（检测按钮）。body 已被 _read_body 解析为 dict。"""
+    if isinstance(body, str):
+        try: body = json.loads(body)
+        except json.JSONDecodeError: body = {}
+    if not isinstance(body, dict): body = {}
 
-    api_key = data.get("api_key", "").strip()
-    base_url = data.get("base_url", "").strip()
-    model = data.get("model", "deepseek-chat").strip()
+    api_key = body.get("api_key", "").strip()
+    base_url = body.get("base_url", "").strip()
+    model = body.get("model", "deepseek-chat").strip()
     if not api_key:
         _respond_json(handler, {"ok": False, "error": "API Key 不能为空"}, 400)
         return
@@ -1783,15 +1782,14 @@ def get_setup_defaults(handler):
     })
 
 
-def post_setup(handler, body: str = ""):
-    """保存首次设置到 .env。"""
-    try:
-        data = json.loads(body)
-    except json.JSONDecodeError:
-        _respond_json(handler, {"ok": False, "error": "JSON 格式错误"}, 400)
-        return
+def post_setup(handler, body):
+    """保存首次设置到 .env。body 已被 _read_body 解析为 dict。"""
+    if isinstance(body, str):
+        try: body = json.loads(body)
+        except json.JSONDecodeError: body = {}
+    if not isinstance(body, dict): body = {}
 
-    api_key = data.get("api_key", "").strip()
+    api_key = body.get("api_key", "").strip()
     if not api_key:
         _respond_json(handler, {"ok": False, "error": "API Key 不能为空"}, 400)
         return

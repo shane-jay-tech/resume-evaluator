@@ -5,7 +5,7 @@ a = Analysis(
     ['/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/main.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.yaml', '.'), ('prompts', 'prompts'), ('rules', 'rules')],
+    datas=[('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/config.yaml', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/prompts', 'prompts'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/rules', 'rules'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/dashboard.html', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/pipeline.html', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/quality.html', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/standards.html', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/weekly_report.html', '.'), ('/Users/yaoxiujie/.cherrystudio/install/global/resume_evaluator/compare.html', '.')],
     hiddenimports=['watchdog.observers.polling'],
     hookspath=[],
     hooksconfig={},
