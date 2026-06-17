@@ -58,7 +58,7 @@ def notify(title: str, subtitle: str, message: str):
 
 def scan_existing(watch_dir: str):
     """委托给 file_watcher 模块。"""
-    _scan_existing(watch_dir, store, process_resume)
+    _scan_existing(watch_dir, store, _process_resume_wrapper)
 
 def _process_resume_wrapper(filepath: str):
     """包装器: 传递全局变量给 services.process_resume。"""

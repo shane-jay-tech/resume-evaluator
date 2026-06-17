@@ -38,24 +38,27 @@ jobs:
             --clean \
             main.py
 
-      - name: 打包发布文件
+      - name: 打包发布文件 (macOS .app)
         run: |
-          mkdir -p release/简历评估系统
-          cp -R dist/简历评估.app release/简历评估系统/
-          cp README_USER.md release/简历评估系统/
-          # 创建双击启动器（放到桌面就是快捷方式）
-          cat > release/简历评估系统/启动系统.command << 'EOF'
+          mkdir -p release
+          cp -R dist/简历评估.app release/
+          cp README_USER.md release/
+          # 创建启动器
+          cat > "release/启动系统.command" << 'LAUNCHER'
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
           open "$DIR/简历评估.app"
-          EOF
-          chmod +x release/简历评估系统/启动系统.command
+          LAUNCHER
+          chmod +x "release/启动系统.command"
+          # 用 ditto 打包（保留 .app 结构 + 中文文件名）
+          ditto -c -k --keepParent release 简历评估系统-macOS.zip
+          mv 简历评估系统-macOS.zip release/
 
       - name: 上传 macOS 版本
         uses: actions/upload-artifact@v4
         with:
           name: 简历评估系统-macOS
-          path: release/简历评估系统/
+          path: release/简历评估系统-macOS.zip
 
   build-windows:
     runs-on: windows-latest
