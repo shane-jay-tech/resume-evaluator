@@ -1803,15 +1803,12 @@ def post_setup(handler, body: str = ""):
 
     # 写入 .env
     from utils.paths import get_env_path, get_downloads_dir
-    import hashlib
     env_path = get_env_path()
     watch = watch_dir or get_downloads_dir()
-    # 使用 SHA256 生成稳定 token（hash() 在 Python 3 中随机化）
-    token_suffix = hashlib.sha256(api_key.encode()).hexdigest()[:8]
     env_lines = [
         "# 简历评估系统配置",
         f"LLM_API_KEY={api_key}",
-        f"AUTH_TOKEN=resume_eval_{token_suffix}",
+        "AUTH_TOKEN=***REMOVED***",
         f"USER_NAME={user_name}",
         f"WATCH_DIR={watch}",
     ]
