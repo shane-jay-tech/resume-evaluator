@@ -281,7 +281,7 @@ def main():
                 "monitor": {"directories": ["~/Downloads"]},
                 "database": {"path": "data/recruitment.db"},
                 "logging": {"level": "INFO", "retention_days": 7, "path": "logs/app.log"},
-                "llm": {"api_key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "max_tokens": 4096, "temperature": 0.3, "max_retries": 2, "timeout": 300.0},
+                "llm": {"api_key_env": "LLM_API_KEY", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "max_tokens": 4096, "temperature": 0.3, "max_retries": 2, "timeout": 300.0},
             }
     else:
         import json as _json

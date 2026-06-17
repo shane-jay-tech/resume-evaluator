@@ -86,7 +86,7 @@ def generate_markdown(result: dict, resume_filename: str, report_dir: str) -> st
         for link in portfolio_links:
             md += f"- [{link}]({link})\n"
 
-    md += "\n---\n\n*报告由 DeepSeek AI 自动生成，仅供参考*\n"
+    md += "\n---\n\n*报告由 AI 自动生成，仅供参考*\n"
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(md)

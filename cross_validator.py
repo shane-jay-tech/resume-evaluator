@@ -122,7 +122,7 @@ class CrossValidator:
 【候选人简历】
 {resume_text[:5000]}
 
-【主评估（DeepSeek）的结果】
+【主评估的结果】
 综合评分：{primary_result.get('match_score', 0)}/100
 结论：{primary_result.get('verdict', '')}
 评分理由：{primary_result.get('score_reasoning', '')}

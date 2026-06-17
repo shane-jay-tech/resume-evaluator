@@ -1625,15 +1625,15 @@ input:focus, select:focus { outline: none; border-color: #667eea; }
 <form id="setupForm">
   <label>🔑 API Key <span style="color:red">*</span></label>
   <input type="password" id="apiKey" placeholder="sk-..." required>
-  <p class="hint">从 DeepSeek 或中转站获取</p>
+  <p class="hint">支持 OpenAI / DeepSeek / 中转站 等兼容 API</p>
 
   <label>🌐 API 地址（可选）</label>
   <input type="text" id="baseUrl" placeholder="https://api.deepseek.com/v1">
-  <p class="hint">默认 DeepSeek 官方，中转站请填写对应地址</p>
+  <p class="hint">留空使用默认，中转站请填写完整地址</p>
 
   <label>🤖 模型名称（可选）</label>
   <input type="text" id="modelName" placeholder="deepseek-chat">
-  <p class="hint">默认 deepseek-chat，中转站可能不同</p>
+  <p class="hint">例如 deepseek-chat / gpt-4o / claude-opus-4 等</p>
 
   <label>👤 你的名字</label>
   <input type="text" id="userName" placeholder="张三">
@@ -1750,7 +1750,7 @@ def post_setup(handler):
     token_suffix = hashlib.sha256(api_key.encode()).hexdigest()[:8]
     env_lines = [
         "# 简历评估系统配置",
-        f"DEEPSEEK_API_KEY={api_key}",
+        f"LLM_API_KEY={api_key}",
         f"AUTH_TOKEN=resume_eval_{token_suffix}",
         f"USER_NAME={user_name}",
         f"WATCH_DIR={watch}",

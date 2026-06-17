@@ -20,8 +20,11 @@ def load_config(config_path: str = "config.yaml") -> dict:
     _load_dotenv()
 
     llm = config.get("llm", {})
-    api_key_env = llm.get("api_key_env", "DEEPSEEK_API_KEY")
+    api_key_env = llm.get("api_key_env", "LLM_API_KEY")
     api_key = os.getenv(api_key_env, "")
+    # 兼容旧版 DEEPSEEK_API_KEY 变量名
+    if not api_key and api_key_env == "LLM_API_KEY":
+        api_key = os.getenv("DEEPSEEK_API_KEY", "")
     if api_key:
         llm["api_key"] = api_key
     else:
