@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>招聘 Pipeline</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background:#f5f5f5; color:#333; padding:20px; }
+  .header { display:flex; justify-content:space-between; align-items:center; padding-bottom:16px; border-bottom:1px solid #e0e0e0; margin-bottom:20px; }
+  .header h1 { font-size:20px; font-weight:600; }
+  .board { display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; }
+  .column { background:#fff; border-radius:8px; padding:12px; box-shadow:0 1px 3px rgba(0,0,0,.08); min-height:200px; }
+  .column h3 { font-size:14px; margin-bottom:12px; padding-bottom:8px; border-bottom:2px solid #eee; display:flex; justify-content:space-between; }
+  .column h3 .count { font-size:12px; color:#888; font-weight:400; }
+  .card { background:#fafafa; border-radius:6px; padding:12px; margin-bottom:8px; cursor:pointer; border-left:3px solid #ddd; transition:all .2s; }
+  .card:hover { box-shadow:0 2px 8px rgba(0,0,0,.1); }
+  .card .name { font-weight:600; font-size:14px; margin-bottom:4px; }
+  .card .pos { font-size:12px; color:#888; margin-bottom:4px; }
+  .card .meta { display:flex; gap:8px; align-items:center; font-size:12px; color:#888; }
+  .card .score { font-weight:700; }
+  .card .score.high { color:#2ecc71; } .card .score.mid { color:#e67e22; } .card .score.low { color:#e74c3c; }
+  .card .actions { margin-top:8px; display:flex; gap:4px; flex-wrap:wrap; }
+  .card .actions button { padding:3px 10px; border-radius:4px; border:1px solid #ddd; background:#fff; cursor:pointer; font-size:11px; transition:all .15s; }
+  .card .actions button:hover { background:#4a90d9; color:#fff; border-color:#4a90d9; }
+  .card .actions button.reject:hover { background:#e74c3c; border-color:#e74c3c; }
+  .card .actions button.pass:hover { background:#2ecc71; border-color:#2ecc71; }
+  .card.dragging { opacity:0.5; transform:rotate(2deg); }
+  .column.drag-over { background:#e8f4fd; box-shadow:inset 0 0 0 2px #4a90d9; }
+  .col-screening { border-top:3px solid #bdc3c7; }
+  .col-interview { border-top:3px solid #3498db; }
+  .col-passed { border-top:3px solid #2ecc71; }
+  .col-eliminated { border-top:3px solid #e74c3c; }
+  .empty-col { text-align:center; padding:30px; color:#ccc; font-size:13px; }
+  @media (max-width:900px) { .board { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width:500px) { .board { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📋 招聘 Pipeline</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a href="dashboard.html" style="background:#4a90d9;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">📊 评估面板</a>
+    <a href="weekly_report.html" style="background:#4a90d9;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">📈 周报分析</a>
+    <span style="font-size:12px;color:#888;" id="update-time">--</span>
+  </div>
+</div>
+
+<div class="board">
+  <div class="column col-screening" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '待筛选')">
+    <h3>📥 待筛选 <span class="count" id="count-screening">0</span></h3>
+    <div id="col-screening"></div>
+  </div>
+  <div class="column col-interview" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '面试中')">
+    <h3>🔄 面试中 <span class="count" id="count-interview">0</span></h3>
+    <div id="col-interview"></div>
+  </div>
+  <div class="column col-passed" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '已通过')">
+    <h3>✅ 已通过 <span class="count" id="count-passed">0</span></h3>
+    <div id="col-passed"></div>
+  </div>
+  <div class="column col-eliminated" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '已淘汰')">
+    <h3>❌ 已淘汰 <span class="count" id="count-eliminated">0</span></h3>
+    <div id="col-eliminated"></div>
+  </div>
+</div>
+
+<script>
+function authHeaders() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'); }
+
+function scoreClass(s) {
+  if (s >= 80) return 'high';
+  if (s >= 60) return 'mid';
+  return 'low';
+}
+
+let allCandidates = [];
+
+function transition(id, newStatus) {
+  // v3: 终态流转时收集面试反馈
+  if (newStatus === '已通过' || newStatus === '已淘汰') {
+    const candidate = allCandidates.find(c => c.id === id);
+    const name = candidate ? candidate.candidate_name : '候选人';
+    const accuracy = confirm(name + ' → ' + newStatus + '\\n\\n系统评分是否准确？\\n\\n「确定」= 系统判断准确\\n「取消」= 系统有偏差（稍后手动标记）');
+    if (accuracy) {
+      fetch('/api/feedback', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ id: id, accuracy: 'accurate', interview_score: newStatus === '已通过' ? 8 : 4 })
+      }).catch(() => {});
+    }
+  }
+
+  fetch('/api/transition', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ id: id, status: newStatus })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) loadPipeline();
+    else alert('操作失败: ' + (data.error || '未知错误'));
+  });
+}
+
+function loadPipeline() {
+  fetch('/api/results?t=' + Date.now())
+    .then(r => r.json())
+    .catch(() => [])
+    .then(data => {
+      allCandidates = data;
+      const buckets = { '待筛选': [], '面试中': [], '已通过': [], '已淘汰': [] };
+      data.forEach(d => {
+        const status = d.pipeline_status || '待筛选';
+        if (buckets[status]) buckets[status].push(d);
+        else buckets['待筛选'].push(d);
+      });
+
+      Object.keys(buckets).forEach(status => {
+        const colId = {
+          '待筛选': 'col-screening', '面试中': 'col-interview',
+          '已通过': 'col-passed', '已淘汰': 'col-eliminated'
+        }[status];
+        const countId = {
+          '待筛选': 'count-screening', '面试中': 'count-interview',
+          '已通过': 'count-passed', '已淘汰': 'count-eliminated'
+        }[status];
+
+        const candidates = buckets[status];
+        const el = document.getElementById(countId);
+        if (el) el.textContent = candidates.length;
+
+        const col = document.getElementById(colId);
+        if (!col) return;
+
+        if (candidates.length === 0) {
+          col.innerHTML = '<div class="empty-col">暂无候选人</div>';
+        } else {
+          let html = '';
+          candidates.forEach(d => {
+            const actions = [];
+            switch (status) {
+              case '待筛选':
+                actions.push('<button onclick="transition(' + d.id + ', \'面试中\')">📞 邀请面试</button>');
+                actions.push('<button class="reject" onclick="transition(' + d.id + ', \'已淘汰\')">✕ 淘汰</button>');
+                break;
+              case '面试中':
+                actions.push('<button class="pass" onclick="transition(' + d.id + ', \'已通过\')">✓ 通过</button>');
+                actions.push('<button class="reject" onclick="transition(' + d.id + ', \'已淘汰\')">✕ 淘汰</button>');
+                actions.push('<button onclick="transition(' + d.id + ', \'待筛选\')">↩ 退回</button>');
+                break;
+              case '已通过':
+                actions.push('<button onclick="transition(' + d.id + ', \'面试中\')">↩ 退回面试</button>');
+                actions.push('<button class="reject" onclick="transition(' + d.id + ', \'已淘汰\')">✕ 淘汰</button>');
+                break;
+              case '已淘汰':
+                actions.push('<button onclick="transition(' + d.id + ', \'待筛选\')">↩ 恢复</button>');
+                break;
+            }
+
+            html += `<div class="card" draggable="true"
+                ondragstart="onDragStart(event, ${d.id})"
+                ondragend="onDragEnd(event)"
+                data-id="${d.id}">
+              <div class="name">${esc(d.candidate_name)}</div>
+              <div class="pos">${esc(d.matched_position)}</div>
+              <div class="meta">
+                <span class="score ${scoreClass(d.match_score)}">${d.match_score}/100</span>
+                <span>${esc(d.verdict)}</span>
+                <span>${(d.timestamp||'').slice(0,10)}</span>
+              </div>
+              <div class="actions">${actions.join(' ')}</div>
+            </div>`;
+          });
+          col.innerHTML = html;
+        }
+      });
+
+      document.getElementById('update-time').textContent = new Date().toLocaleTimeString('zh-CN');
+    });
+}
+
+// ── 拖拽支持 ──
+let dragId = null;
+
+function onDragStart(e, id) {
+  dragId = id;
+  e.target.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', id);
+}
+
+function onDragEnd(e) {
+  e.target.classList.remove('dragging');
+  dragId = null;
+  document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  // 高亮当前列
+  const col = e.currentTarget;
+  if (!col.classList.contains('drag-over')) {
+    col.classList.add('drag-over');
+  }
+}
+
+function onDragLeave(e) {
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onDrop(e, newStatus) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if (dragId === null) return;
+  transition(dragId, newStatus);
+}
+
+// UPGRADE-P1+: SSE 实时事件连接 + 降级轮询
+let sseConn = null;
+let pollTimer = null;
+const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
+
+function connectSSE() {
+  if (sseConn) { sseConn.close(); }
+  sseConn = new EventSource(SSE_URL);
+
+  sseConn.addEventListener('eval_complete', function(e) { loadPipeline(); });
+  sseConn.addEventListener('status_change', function(e) { loadPipeline(); });
+  sseConn.addEventListener('pending_update', function(e) { loadPipeline(); });
+
+  sseConn.onopen = function() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(loadPipeline, 30000); // 30s 兜底
+  };
+
+  sseConn.onerror = function() {
+    sseConn.close();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(loadPipeline, 8000);
+    setTimeout(connectSSE, 30000);
+  };
+}
+
+loadPipeline();
+connectSSE();
+</script>
+</body>
+</html>

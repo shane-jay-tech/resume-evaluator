@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>评估质量监控</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:#f0f2f5; color:#333; padding:20px; }
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+  .header h1 { font-size:24px; }
+  .nav-btns { display:flex; gap:8px; }
+  .nav-btns a { text-decoration:none; background:#fff; color:#4a90d9; border:1px solid #4a90d9; padding:8px 16px; border-radius:6px; font-size:14px; }
+  .nav-btns a.active { background:#4a90d9; color:#fff; }
+  .drift-banner { background:#fef3cd; border-left:4px solid #f39c12; padding:12px 16px; border-radius:6px; margin-bottom:20px; font-size:14px; display:none; }
+  .drift-banner.show { display:block; }
+  .controls { display:flex; gap:8px; margin-bottom:20px; align-items:center; }
+  .controls button { padding:6px 16px; border-radius:20px; border:1px solid #ddd; background:#fff; cursor:pointer; font-size:13px; transition:all .2s; }
+  .controls button:hover { border-color:#4a90d9; color:#4a90d9; }
+  .controls button.active { background:#4a90d9; color:#fff; border-color:#4a90d9; }
+  .chart-row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:20px; }
+  @media(max-width:900px){ .chart-row{grid-template-columns:1fr;} }
+  .chart-box { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .chart-box h3 { font-size:15px; margin-bottom:12px; color:#555; }
+  .chart-box canvas { max-height:350px; }
+  .table-box { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .table-box h3 { font-size:15px; margin-bottom:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { background:#fafafa; text-align:left; padding:10px 12px; font-weight:500; color:#888; border-bottom:2px solid #eee; }
+  td { padding:8px 12px; border-bottom:1px solid #f0f0f0; }
+  .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+  .status-dot.green { background:#2ecc71; }
+  .status-dot.yellow { background:#f39c12; }
+  .status-dot.red { background:#e74c3c; }
+  .update-time { font-size:12px; color:#888; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📈 评估质量监控</h1>
+  <div class="nav-btns">
+    <a href="dashboard.html">📋 评估面板</a>
+    <a href="pipeline.html">📋 Pipeline</a>
+    <a href="weekly_report.html">📊 周报分析</a>
+  </div>
+</div>
+
+<div class="drift-banner" id="drift-banner"></div>
+
+<div class="controls">
+  <span style="font-size:13px;color:#888;margin-right:8px;">时间范围：</span>
+  <button class="active" onclick="setDays(7)">近 7 天</button>
+  <button onclick="setDays(14)">近 14 天</button>
+  <button onclick="setDays(30)">近 30 天</button>
+  <span style="flex:1;"></span>
+  <span class="update-time" id="update-time">--</span>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>📊 每日评估趋势</h3>
+    <canvas id="trend-chart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h3>📋 各维度推荐率趋势</h3>
+    <canvas id="rec-rate-chart"></canvas>
+  </div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>🏷️ 评估可靠性（按岗位）</h3>
+    <canvas id="reliability-chart"></canvas>
+  </div>
+  <div class="chart-box">
+    <h3>📈 通过/淘汰均分对比</h3>
+    <canvas id="verdict-score-chart"></canvas>
+  </div>
+</div>
+
+<div class="table-box">
+  <h3>📝 详细数据</h3>
+  <table>
+    <thead><tr><th>日期</th><th>评估数</th><th>平均分</th><th>推荐率</th><th>趋势</th></tr></thead>
+    <tbody id="trend-table"></tbody>
+  </table>
+</div>
+
+<!-- v3: 评分质量审计 -->
+<div class="card" style="margin-top:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h3>🔍 评分质量审计</h3>
+    <button onclick="loadAudit()" style="background:#4a90d9;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">刷新审计</button>
+  </div>
+  <div id="audit-summary" style="margin-top:12px;"></div>
+  <div id="audit-detail" style="margin-top:8px;font-size:13px;"></div>
+</div>
+
+<script>
+function authHeaders() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+let currentDays = 7;
+let charts = {};
+
+function setDays(d) {
+  currentDays = d;
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.controls button[onclick="setDays(${d})"]`).classList.add('active');
+  load();
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function load() {
+  // fetch trends + reliability + health
+  Promise.all([
+    fetch(`/api/stats/eval-trends?days=${currentDays}`).then(r => r.json()),
+    fetch('/api/stats/eval-reliability').then(r => r.json()),
+    fetch('/api/health').then(r => r.json()),
+  ]).then(([trendsData, reliabilityData, healthData]) => {
+    const trends = trendsData.trends || [];
+    const reliability = reliabilityData.reliability || [];
+    const driftWarning = healthData.drift_warning || '';
+
+    // drift banner
+    const banner = document.getElementById('drift-banner');
+    if (driftWarning) {
+      banner.textContent = '⚠️ ' + driftWarning;
+      banner.classList.add('show');
+    } else {
+      banner.classList.remove('show');
+    }
+
+    // destroy existing charts
+    Object.values(charts).forEach(c => c.destroy());
+    charts = {};
+
+    // trend chart (avg score line + count bar)
+    renderTrendChart(trends);
+    renderRecRateChart(trends);
+    renderReliabilityChart(reliability);
+
+    // table
+    renderTable(trends);
+
+    document.getElementById('update-time').textContent = new Date().toLocaleTimeString('zh-CN');
+  }).catch(e => console.error('quality load error:', e));
+}
+
+function renderTrendChart(trends) {
+  const ctx = document.getElementById('trend-chart').getContext('2d');
+  charts.trend = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: trends.map(t => t.day),
+      datasets: [
+        { label: '评估数', data: trends.map(t => t.cnt), backgroundColor: '#4a90d9', yAxisID: 'y' },
+        { label: '平均分', data: trends.map(t => t.avg_score), type: 'line', borderColor: '#f39c12', backgroundColor: 'transparent', yAxisID: 'y1', tension: 0.3 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: {
+        y: { position: 'left', title: { display: true, text: '评估数' }, beginAtZero: true },
+        y1: { position: 'right', title: { display: true, text: '平均分' }, min: 0, max: 100, grid: { drawOnChartArea: false } },
+      }
+    }
+  });
+}
+
+function renderRecRateChart(trends) {
+  const ctx = document.getElementById('rec-rate-chart').getContext('2d');
+  charts.recRate = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: trends.map(t => t.day),
+      datasets: [{
+        label: '推荐率', data: trends.map(t => Math.round(t.rec_rate * 100)),
+        borderColor: '#2ecc71', backgroundColor: 'rgba(46,204,113,.1)', fill: true, tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { title: { display: true, text: '推荐率 %' }, min: 0, max: 100 } }
+    }
+  });
+}
+
+function renderReliabilityChart(reliability) {
+  const ctx = document.getElementById('reliability-chart').getContext('2d');
+  charts.reliability = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: reliability.map(r => r.position.length > 10 ? r.position.slice(0,10)+'...' : r.position),
+      datasets: [
+        { label: '终态均分', data: reliability.map(r => r.avg_score), backgroundColor: '#9b59b6' },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { title: { display: true, text: '匹配度均分' }, min: 0, max: 100 } }
+    }
+  });
+
+  // verdict-score chart (通过 vs 淘汰 in reliability data)
+  const ctx2 = document.getElementById('verdict-score-chart').getContext('2d');
+  const labels = reliability.map(r => r.position.length > 10 ? r.position.slice(0,10)+'...' : r.position);
+  charts.verdictScore = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: '终态总数', data: reliability.map(r => r.total), backgroundColor: '#7f8c8d' },
+        { label: '终态推荐率', data: reliability.map(r => Math.round(r.rec_rate * 100)), backgroundColor: '#2ecc71' },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { title: { display: true, text: '数值' }, beginAtZero: true } }
+    }
+  });
+}
+
+function renderTable(trends) {
+  const tbody = document.getElementById('trend-table');
+  if (!trends.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:30px;">暂无数据</td></tr>';
+    return;
+  }
+  let html = '';
+  const sorted = [...trends].reverse(); // newest first
+  let prev = null;
+  sorted.forEach(t => {
+    const trendIcon = prev && prev.cnt > 0
+      ? (t.avg_score > prev.avg_score ? '↑' : t.avg_score < prev.avg_score ? '↓' : '→')
+      : '—';
+    const trendColor = trendIcon === '↑' ? 'color:#2ecc71;' : trendIcon === '↓' ? 'color:#e74c3c;' : 'color:#888;';
+    html += `<tr>
+      <td>${t.day}</td>
+      <td>${t.cnt}</td>
+      <td><b>${t.avg_score}</b></td>
+      <td>${Math.round(t.rec_rate * 100)}%</td>
+      <td style="${trendColor}font-weight:700;">${trendIcon}</td>
+    </tr>`;
+    prev = t;
+  });
+  tbody.innerHTML = html;
+}
+
+// v3: 评分审计
+function loadAudit() {
+  fetch('/api/audit/scores').then(r => r.json()).then(data => {
+    if (!data.ok) return;
+    const r = data.report;
+    const q = r.quality;
+    const total = r.total;
+    document.getElementById('audit-summary').innerHTML =
+      `<div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="background:#f0fdf4;padding:8px 16px;border-radius:6px;">
+          <span style="font-size:24px;font-weight:700;color:#16a085;">${q.good}</span>
+          <span style="font-size:12px;color:#666;">份评分合格</span>
+        </div>
+        <div style="background:#fef9e7;padding:8px 16px;border-radius:6px;">
+          <span style="font-size:24px;font-weight:700;color:#f39c12;">${q.warning}</span>
+          <span style="font-size:12px;color:#666;">份轻微问题</span>
+        </div>
+        <div style="background:#fdedec;padding:8px 16px;border-radius:6px;">
+          <span style="font-size:24px;font-weight:700;color:#e74c3c;">${q.poor}</span>
+          <span style="font-size:12px;color:#666;">份需关注</span>
+        </div>
+        <div style="background:#ebf5fb;padding:8px 16px;border-radius:6px;">
+          <span style="font-size:24px;font-weight:700;color:#2980b9;">${r.avg_deviation}</span>
+          <span style="font-size:12px;color:#666;">平均偏差分</span>
+        </div>
+      </div>`;
+
+    // 按岗位
+    let posHtml = '<table style="margin-top:12px;"><tr><th>岗位</th><th>数量</th><th>均分</th><th>平均偏差</th></tr>';
+    for (const [pos, stats] of Object.entries(r.by_position)) {
+      const cls = stats.avg_deviation > 10 ? 'style="color:#e74c3c;font-weight:700"' : '';
+      posHtml += `<tr><td>${esc(pos)}</td><td>${stats.count}</td><td>${stats.avg_score}</td><td ${cls}>${stats.avg_deviation}</td></tr>`;
+    }
+    posHtml += '</table>';
+
+    // 常见问题
+    if (r.top_issues && r.top_issues.length > 0) {
+      posHtml += '<div style="margin-top:8px;font-size:13px;color:#888;">常见问题: ';
+      posHtml += r.top_issues.map(i => `${i.issue} (${i.count}次)`).join(' | ');
+      posHtml += '</div>';
+    }
+
+    document.getElementById('audit-detail').innerHTML = posHtml;
+  });
+}
+
+// SSE for real-time updates
+function connectSSE() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const es = new EventSource('/api/events?token=' + token);
+  es.addEventListener('eval_complete', function() { load(); });
+  es.addEventListener('status_change', function() { load(); });
+  es.onerror = function() { es.close(); setTimeout(connectSSE, 30000); };
+}
+
+load();
+connectSSE();
+</script>
+</body>
+</html>

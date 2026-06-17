@@ -269,6 +269,16 @@ def main():
     os.chdir(os.path.dirname(config_path) if os.path.isfile(config_path) else get_user_dir())
     project_dir = os.getcwd()  # 初始化全局 project_dir
 
+    # PyInstaller 打包后，HTML 页面在资源目录中，复制到用户目录供服务器访问
+    if getattr(sys, 'frozen', False):
+        import shutil as _shutil
+        from utils.paths import get_resource_dir
+        res_dir = get_resource_dir()
+        for fname in os.listdir(res_dir):
+            if fname.endswith('.html') and not os.path.exists(os.path.join(project_dir, fname)):
+                _shutil.copy2(os.path.join(res_dir, fname), os.path.join(project_dir, fname))
+                logger.debug("复制页面: %s", fname)
+
     pidfile = os.path.join(project_dir, ".pid")
 
     if config_path.endswith(".yaml") or config_path.endswith(".yml"):

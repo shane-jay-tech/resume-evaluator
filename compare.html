@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>候选人对比 - 简历评估系统</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; color: #333; }
+.header { background: #1a1a2e; color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 20px; }
+.header a { color: #4fc3f7; text-decoration: none; }
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+/* 搜索和选择 */
+.selection-bar { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.1); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.selection-bar input { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.selection-bar button { padding: 8px 16px; background: #1a1a2e; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.selection-bar button:hover { background: #2d2d4e; }
+.selected-tags { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.selected-tag { background: #e3f2fd; color: #1565c0; padding: 4px 10px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: default; }
+.selected-tag .remove { cursor: pointer; font-weight: bold; color: #999; }
+.selected-tag .remove:hover { color: #c62828; }
+.search-results { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); position: absolute; z-index: 10; max-height: 300px; overflow-y: auto; width: 400px; display: none; }
+.search-results.show { display: block; }
+.search-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid #eee; transition: background .15s; }
+.search-item:hover { background: #f0f4ff; }
+.search-item .name { font-weight: 600; }
+.search-item .meta { font-size: 12px; color: #888; }
+
+/* 对比面板 */
+.compare-grid { display: grid; gap: 16px; }
+.compare-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+.compare-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.candidate-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); overflow: hidden; }
+.card-header { padding: 16px; border-bottom: 1px solid #eee; }
+.card-header .name { font-size: 18px; font-weight: 700; }
+.card-header .meta { font-size: 13px; color: #888; margin-top: 4px; }
+.card-body { padding: 16px; }
+.score-big { font-size: 48px; font-weight: 700; text-align: center; }
+.score-big.high { color: #2e7d32; }
+.score-big.medium { color: #f57f17; }
+.score-big.low { color: #c62828; }
+.score-label { text-align: center; font-size: 14px; color: #888; margin-top: -8px; }
+.verdict-badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600; margin: 8px 0; }
+.verdict-badge.star { background: #c8e6c9; color: #2e7d32; }
+.verdict-badge.rec { background: #dcedc8; color: #558b2f; }
+.verdict-badge.pend { background: #fff9c4; color: #f57f17; }
+.verdict-badge.rej { background: #ffcdd2; color: #c62828; }
+
+.dim-section { margin-top: 16px; }
+.dim-section h3 { font-size: 14px; color: #555; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+.dim-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
+.dim-row .dim-name { color: #555; }
+.dim-row .dim-score { font-weight: 600; }
+.dim-bar { flex: 1; height: 6px; background: #eee; border-radius: 3px; margin: 0 10px; overflow: hidden; }
+.dim-bar-fill { height: 100%; border-radius: 3px; background: #42a5f5; transition: width .3s; }
+.dim-bar-fill.high { background: #66bb6a; }
+.dim-bar-fill.medium { background: #ffa726; }
+.dim-bar-fill.low { background: #ef5350; }
+
+.list-box { margin-top: 12px; }
+.list-box h4 { font-size: 12px; color: #888; margin-bottom: 4px; text-transform: uppercase; }
+.list-box ul { list-style: none; }
+.list-box ul.highlights li { padding: 3px 0 3px 16px; font-size: 13px; position: relative; }
+.list-box ul.highlights li::before { content: "+"; position: absolute; left: 0; color: #2e7d32; font-weight: bold; }
+.list-box ul.risks li { padding: 3px 0 3px 16px; font-size: 13px; position: relative; color: #c62828; }
+.list-box ul.risks li::before { content: "!"; position: absolute; left: 0; color: #c62828; font-weight: bold; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: #999; }
+.empty-state p { font-size: 16px; margin-top: 12px; }
+
+/* 交叉校验指示器 */
+.cv-indicator { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+.cv-indicator.agree { background: #e8f5e9; color: #2e7d32; }
+.cv-indicator.minor { background: #fff3e0; color: #e65100; }
+.cv-indicator.major { background: #ffebee; color: #c62828; }
+
+/* 面试反馈指示器 */
+.fb-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 4px; }
+.fb-badge.overrated { background: #ffebee; color: #c62828; }
+.fb-badge.accurate { background: #e8f5e9; color: #2e7d32; }
+.fb-badge.underrated { background: #e3f2fd; color: #1565c0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📊 候选人横向对比</h1>
+  <div>
+    <a href="/dashboard.html">← 返回面板</a>
+  </div>
+</div>
+
+<div class="container">
+  <div class="selection-bar">
+    <span style="font-size:13px;color:#888">选择候选人对比（2-3人）：</span>
+    <div class="selected-tags" id="selectedTags"></div>
+    <input type="text" id="searchInput" placeholder="输入姓名搜索候选人…" oninput="searchCandidates(this.value)" onfocus="toggleSearchResults(true)">
+    <button onclick="doCompare()">开始对比</button>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div class="compare-grid cols-2" id="compareGrid">
+    <div class="empty-state">
+      <div style="font-size:48px">👆</div>
+      <p>搜索并选择 2-3 名候选人进行横向对比</p>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedIds = [];
+let allCandidates = [];
+
+async function loadCandidates() {
+  try {
+    const resp = await fetch('/api/results');
+    allCandidates = await resp.json();
+  } catch(e) { console.error(e); }
+}
+loadCandidates();
+
+function searchCandidates(query) {
+  const box = document.getElementById('searchResults');
+  if (!query || query.length < 1) { box.classList.remove('show'); return; }
+  const q = query.toLowerCase();
+  const matches = allCandidates.filter(c =>
+    (c.candidate_name || '').toLowerCase().includes(q) && !selectedIds.includes(c.id)
+  ).slice(0, 8);
+  if (matches.length === 0) { box.classList.remove('show'); return; }
+  box.innerHTML = matches.map(c => `
+    <div class="search-item" onclick="addCandidate(${c.id},'${c.candidate_name.replace(/'/g,"\\'")}')">
+      <div class="name">${c.candidate_name}</div>
+      <div class="meta">${c.matched_position} · ${c.match_score}分 · ${c.verdict}</div>
+    </div>
+  `).join('');
+  box.classList.add('show');
+}
+
+function toggleSearchResults(show) {
+  if (!show) setTimeout(() => document.getElementById('searchResults').classList.remove('show'), 200);
+}
+
+function addCandidate(id, name) {
+  if (selectedIds.length >= 3) return;
+  if (selectedIds.includes(id)) return;
+  selectedIds.push(id);
+  renderTags();
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchResults').classList.remove('show');
+  if (selectedIds.length >= 2) doCompare();
+}
+
+function removeCandidate(id) {
+  selectedIds = selectedIds.filter(x => x !== id);
+  renderTags();
+  if (selectedIds.length < 2) {
+    document.getElementById('compareGrid').innerHTML = '<div class="empty-state"><div style="font-size:48px">👆</div><p>搜索并选择 2-3 名候选人进行横向对比</p></div>';
+  } else {
+    doCompare();
+  }
+}
+
+function renderTags() {
+  document.getElementById('selectedTags').innerHTML = selectedIds.map(id => {
+    const c = allCandidates.find(x => x.id === id);
+    const name = c ? c.candidate_name : id;
+    return `<span class="selected-tag">${name} <span class="remove" onclick="removeCandidate(${id})">×</span></span>`;
+  }).join('');
+}
+
+async function doCompare() {
+  if (selectedIds.length < 2) return;
+  const grid = document.getElementById('compareGrid');
+  grid.innerHTML = '<div style="text-align:center;padding:40px">加载中…</div>';
+  try {
+    const resp = await fetch(`/api/compare?ids=${selectedIds.join(',')}`);
+    const data = await resp.json();
+    if (!data.ok) { grid.innerHTML = `<div class="empty-state"><p>${data.error}</p></div>`; return; }
+    renderCompare(data.candidates);
+  } catch(e) {
+    grid.innerHTML = `<div class="empty-state"><p>加载失败: ${e.message}</p></div>`;
+  }
+}
+
+function renderCompare(candidates) {
+  const grid = document.getElementById('compareGrid');
+  grid.className = `compare-grid cols-${candidates.length}`;
+
+  grid.innerHTML = candidates.map(c => {
+    const dims = c.dimensions || {};
+    const dimDetails = c.dimension_details || [];
+    const cv = c.cross_validation;
+    const fb = c.interview_feedback;
+
+    const scoreClass = c.match_score >= 85 ? 'high' : (c.match_score >= 70 ? 'medium' : 'low');
+    const vClass = c.verdict === '强烈推荐' ? 'star' : (c.verdict === '推荐' ? 'rec' : (c.verdict === '待定' ? 'pend' : 'rej'));
+
+    let cvHtml = '';
+    if (cv) {
+      const cvIcon = cv.agreement === 'agree' ? '✅' : (cv.agreement === 'minor_diff' ? '⚠️' : '🔴');
+      cvHtml = `<span class="cv-indicator ${cv.agreement}">${cvIcon} Claude: ${cv.claude_score}分 (${cv.score_diff > 0 ? '+' : ''}${cv.score_diff})</span>`;
+    }
+
+    let fbHtml = '';
+    if (fb) {
+      fbHtml = `<span class="fb-badge ${fb.accuracy}">面试: ${fb.interview_score}/10 (${fb.accuracy === 'accurate' ? '准确' : (fb.accuracy === 'overrated' ? '偏高' : '偏低')})</span>`;
+    }
+
+    let dimsHtml = '';
+    if (dimDetails.length > 0) {
+      dimsHtml = dimDetails.map(d => {
+        const barClass = d.score >= 8 ? 'high' : (d.score >= 6 ? 'medium' : 'low');
+        return `<div class="dim-row">
+          <span class="dim-name">${d.dimension_name || d.dimension_key}</span>
+          <div class="dim-bar"><div class="dim-bar-fill ${barClass}" style="width:${d.score * 10}%"></div></div>
+          <span class="dim-score">${d.score}/10</span>
+        </div>`;
+      }).join('');
+    } else {
+      dimsHtml = Object.entries(dims).map(([k, v]) => {
+        const score = typeof v === 'object' ? (v.score || 0) : 0;
+        const name = typeof v === 'object' ? (v.name || k) : k;
+        const barClass = score >= 8 ? 'high' : (score >= 6 ? 'medium' : 'low');
+        return `<div class="dim-row">
+          <span class="dim-name">${name}</span>
+          <div class="dim-bar"><div class="dim-bar-fill ${barClass}" style="width:${score * 10}%"></div></div>
+          <span class="dim-score">${score}/10</span>
+        </div>`;
+      }).join('');
+    }
+
+    const highlights = Array.isArray(c.highlights) ? c.highlights : [];
+    const risks = Array.isArray(c.risks) ? c.risks : [];
+
+    return `
+    <div class="candidate-card">
+      <div class="card-header">
+        <div class="name">${c.candidate_name} ${cvHtml} ${fbHtml}</div>
+        <div class="meta">${c.matched_position} · 评估时间: ${(c.timestamp || '').substr(0,10)}</div>
+      </div>
+      <div class="card-body">
+        <div class="score-big ${scoreClass}">${c.match_score}</div>
+        <div class="score-label">综合匹配度</div>
+        <div style="text-align:center"><span class="verdict-badge ${vClass}">${c.verdict}</span></div>
+        ${c.score_reasoning ? `<p style="font-size:13px;color:#888;margin-top:8px;line-height:1.5">${c.score_reasoning.substr(0,200)}${c.score_reasoning.length > 200 ? '…' : ''}</p>` : ''}
+        ${c.summary ? `<p style="font-size:13px;margin-top:8px;color:#555">📝 ${c.summary}</p>` : ''}
+
+        <div class="dim-section">
+          <h3>维度评分对比</h3>
+          ${dimsHtml}
+        </div>
+
+        ${highlights.length > 0 ? `
+        <div class="list-box">
+          <h4>亮点</h4>
+          <ul class="highlights">${highlights.map(h => `<li>${h}</li>`).join('')}</ul>
+        </div>` : ''}
+
+        ${risks.length > 0 ? `
+        <div class="list-box">
+          <h4>风险点</h4>
+          <ul class="risks">${risks.map(r => `<li>${r}</li>`).join('')}</ul>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 点击外部关闭搜索框
+document.addEventListener('click', e => {
+  if (!e.target.closest('.selection-bar')) {
+    document.getElementById('searchResults').classList.remove('show');
+  }
+});
+</script>
+</body>
+</html>

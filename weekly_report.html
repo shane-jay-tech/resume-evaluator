@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>招聘数据周报</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:#f0f2f5; color:#333; padding:20px; }
+.header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+.header h1 { font-size:24px; }
+.nav-btns { display:flex; gap:8px; align-items:center; }
+.nav-btns a { text-decoration:none; background:#4a90d9; color:#fff; padding:8px 16px; border-radius:6px; font-size:14px; }
+.nav-btns a.secondary { background:#fff; color:#4a90d9; border:1px solid #4a90d9; }
+.nav-btns button { padding:8px 14px; border-radius:6px; border:1px solid #ddd; font-size:13px; cursor:pointer; }
+.refresh-status { font-size:12px; color:#888; margin-left:4px; }
+.nav-btns a.pending-link { background:#e67e22; }
+.filters { display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap; align-items:center; }
+.filters select, .filters button { padding:8px 14px; border-radius:6px; border:1px solid #ddd; font-size:13px; cursor:pointer; background:#fff; }
+.filters button { background:#4a90d9; color:#fff; border:none; }
+.cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; margin-bottom:24px; }
+.card { background:#fff; border-radius:10px; padding:16px 20px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.card .label { font-size:12px; color:#888; margin-bottom:4px; }
+.card .value { font-size:28px; font-weight:700; }
+.card .change { font-size:12px; margin-top:2px; }
+.card .change.up { color:#e74c3c; }
+.card .change.down { color:#2ecc71; }
+.chart-row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:24px; }
+@media(max-width:900px){ .chart-row{grid-template-columns:1fr;} }
+.chart-box { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.chart-box h3 { font-size:15px; margin-bottom:12px; color:#555; }
+.chart-box canvas { max-height:300px; }
+.advice-box { background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 3px rgba(0,0,0,.06); margin-bottom:24px; }
+.advice-box h3 { font-size:16px; margin-bottom:16px; }
+.advice-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px,1fr)); gap:16px; }
+.advice-item { background:#f8f9fa; border-radius:8px; padding:14px; border-left:3px solid #4a90d9; }
+.advice-item.warn { border-left-color:#e74c3c; }
+.advice-item.good { border-left-color:#2ecc71; }
+.advice-item .advice-title { font-weight:600; font-size:14px; margin-bottom:6px; }
+.advice-item .advice-text { font-size:13px; color:#555; line-height:1.6; }
+.table-section { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); margin-bottom:24px; }
+.table-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
+.table-header h3 { font-size:15px; }
+.table-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.table-actions button { padding:7px 14px; border-radius:6px; border:1px solid #ddd; font-size:13px; cursor:pointer; background:#fff; }
+.table-actions button.primary { background:#4a90d9; color:#fff; border:none; }
+.table-actions button.export { background:#27ae60; color:#fff; border:none; }
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; min-width:900px; }
+th { background:#fafafa; text-align:left; padding:10px 8px; font-weight:500; color:#888; border-bottom:2px solid #eee; white-space:nowrap; cursor:pointer; }
+th:hover { color:#4a90d9; }
+td { padding:8px; border-bottom:1px solid #f0f0f0; }
+tr:hover td { background:#f8f9fa; }
+td select, td input { width:100%; padding:4px 6px; border:1px solid #ddd; border-radius:4px; font-size:12px; }
+td select.edited, td input.edited { border-color:#f39c12; background:#fffdf5; }
+.verdict-tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; }
+.verdict-tag.star { background:#fef3cd; color:#b8860b; }
+.verdict-tag.rec { background:#d4efdf; color:#1e8449; }
+.verdict-tag.pend { background:#fdebd0; color:#b9770e; }
+.verdict-tag.rej { background:#fadbd8; color:#c0392b; }
+.status-tag { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; }
+.status-tag.待筛选 { background:#eee; color:#666; }
+.status-tag.面试中 { background:#d6eaf8; color:#2471a3; }
+.status-tag.已通过 { background:#d5f5e3; color:#1e8449; }
+.status-tag.已淘汰 { background:#fadbd8; color:#c0392b; }
+.score-input { width:60px !important; text-align:center; }
+.notes-input { min-width:100px; }
+.toast { position:fixed; top:20px; right:20px; background:#2ecc71; color:#fff; padding:12px 20px; border-radius:8px; font-size:14px; z-index:999; opacity:0; transition:opacity .3s; }
+.toast.show { opacity:1; }
+
+@media print {
+  body { background:#fff; padding:0; }
+  .header, .filters, .nav-btns, .table-actions, .toast { display:none !important; }
+  .cards { page-break-inside:avoid; }
+  .chart-box { page-break-inside:avoid; }
+  .table-section { box-shadow:none; }
+  th { background:#f0f0f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .verdict-tag, .status-tag { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  td, th { padding:4px 6px; font-size:11px; }
+  @page { margin:1cm; size:A4 landscape; }
+}
+</style>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+
+<div class="header">
+  <h1>📊 招聘数据周报</h1>
+  <div class="nav-btns">
+    <a href="dashboard.html" class="secondary">📋 评估面板</a>
+    <a href="pipeline.html" style="background:#e67e22;">📋 Pipeline</a>
+    <a href="dashboard.html" class="pending-link">🔔 待分配池</a>
+    <button onclick="manualRefresh()">🔄 手动刷新</button>
+    <button id="refresh-toggle" onclick="toggleRefresh()">⏸ 暂停刷新</button>
+    <span class="refresh-status" id="refresh-status">● 自动刷新中</span>
+  </div>
+</div>
+
+<div class="filters">
+  <select id="position-filter" onchange="render()">
+    <option value="all">全部岗位</option>
+  </select>
+  <select id="week-filter" onchange="render()">
+    <option value="all">全部时间</option>
+    <option value="this_week">本周</option>
+    <option value="last_week">上周</option>
+  </select>
+  <button onclick="render()">应用筛选</button>
+  <span style="font-size:13px;color:#888;" id="data-range"></span>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="chart-row">
+  <div class="chart-box"><h3>各岗位候选人分布</h3><canvas id="bar-chart"></canvas></div>
+  <div class="chart-box"><h3>评估结论分布</h3><canvas id="pie-chart"></canvas></div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box"><h3>招聘漏斗</h3><canvas id="funnel-chart"></canvas></div>
+  <div class="chart-box"><h3>匹配度分布</h3><canvas id="histogram-chart"></canvas></div>
+</div>
+
+<div class="advice-box">
+  <h3>📝 本周招聘总结（文字摘要）</h3>
+  <div id="summary-text" style="font-size:14px;line-height:1.9;color:#333;"></div>
+</div>
+
+<div class="advice-box">
+  <h3>💡 招聘策略建议</h3>
+  <div class="advice-grid" id="advice-grid"></div>
+</div>
+
+<!-- UPGRADE-P2+: 漏斗瓶颈洞察 -->
+<div class="advice-box" id="funnel-insight-box" style="display:none;">
+  <h3>🔍 漏斗瓶颈洞察（AI 分析）</h3>
+  <div id="funnel-insight-content"></div>
+</div>
+
+<div class="table-section">
+  <div class="table-header">
+    <h3>📝 候选人数据明细（点击单元格编辑，修改后点保存）</h3>
+    <div class="table-actions">
+      <button class="primary" onclick="saveChanges()">💾 保存修改</button>
+      <button class="export" onclick="exportCSV('excel')">📥 导出 Excel</button>
+      <button class="export" onclick="exportCSV('spss')">📥 导出 SPSS</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortTable('candidate_name')">候选人 ▾</th>
+          <th onclick="sortTable('matched_position')">岗位 ▾</th>
+          <th onclick="sortTable('match_score')">匹配度 ▾</th>
+          <th>原始结论</th>
+          <th>修改结论</th>
+          <th>状态</th>
+          <th>备注</th>
+          <th onclick="sortTable('timestamp')">时间 ▾</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function authHeaders() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+const VERDICT_MAP = { '强烈推荐':'star', '推荐':'rec', '待定':'pend', '不推荐':'rej' };
+const VERDICTS = ['强烈推荐','推荐','待定','不推荐'];
+const STATUSES = ['待筛选','面试中','已通过','已淘汰'];
+let allData = [];
+let editedCells = {}; // { index: { field: value } }
+let sortKey = null, sortAsc = true;
+let charts = {};
+
+const POS_COLORS = ['#4a90d9','#f39c12','#2ecc71','#e74c3c','#9b59b6','#1abc9c'];
+const VERDICT_COLORS = { '强烈推荐':'#f39c12', '推荐':'#2ecc71', '待定':'#e67e22', '不推荐':'#e74c3c' };
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'); }
+
+function parseWeek(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  monday.setHours(0,0,0,0);
+  return monday.toISOString().slice(0,10);
+}
+
+function getNowMonday() {
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0,0,0,0);
+  return d.toISOString().slice(0,10);
+}
+
+function getLastMonday() {
+  const d = new Date(getNowMonday());
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().slice(0,10);
+}
+
+function filterData() {
+  let data = allData;
+  const pos = document.getElementById('position-filter').value;
+  const week = document.getElementById('week-filter').value;
+
+  if (pos !== 'all') data = data.filter(d => d.matched_position === pos);
+  if (week === 'this_week') {
+    const monday = getNowMonday();
+    data = data.filter(d => parseWeek(d.timestamp) === monday);
+  } else if (week === 'last_week') {
+    const monday = getLastMonday();
+    data = data.filter(d => parseWeek(d.timestamp) === monday);
+  }
+
+  return data;
+}
+
+function countVerdicts(data) {
+  const c = { '强烈推荐':0, '推荐':0, '待定':0, '不推荐':0 };
+  data.forEach(d => { if (c[d.verdict] !== undefined) c[d.verdict]++; });
+  return c;
+}
+
+// ---- CARDS ----
+function renderCards(data) {
+  const all = allData;
+  const nowMon = getNowMonday();
+  const lastMon = getLastMonday();
+
+  const thisWeek = all.filter(d => parseWeek(d.timestamp) === nowMon);
+  const lastWeek = all.filter(d => parseWeek(d.timestamp) === lastMon);
+
+  const avgScore = data.length ? (data.reduce((s,d) => s + d.match_score, 0) / data.length).toFixed(1) : 0;
+  const recRate = data.length ? ((data.filter(d => d.verdict === '强烈推荐' || d.verdict === '推荐').length / data.length) * 100).toFixed(0) : 0;
+  const pending = data.filter(d => (d.pipeline_status || '待筛选') === '待筛选').length;
+
+  const thisCount = thisWeek.length;
+  const lastCount = lastWeek.length;
+  const countDiff = lastCount > 0 ? (((thisCount - lastCount) / lastCount) * 100).toFixed(0) : '—';
+
+  const posFilter = document.getElementById('position-filter').value;
+  let targetLabel = '全部岗位';
+  if (posFilter !== 'all') targetLabel = posFilter;
+
+  document.getElementById('cards').innerHTML = `
+    <div class="card"><div class="label">📋 ${targetLabel} 总评估数</div><div class="value">${data.length}</div><div class="change ${countDiff > 0 ? 'up' : 'down'}">本周 ${thisCount} 份${countDiff !== '—' ? '（较上周' + (countDiff>0?'+':'') + countDiff + '%）' : ''}</div></div>
+    <div class="card"><div class="label">📈 平均匹配度</div><div class="value">${avgScore}</div><div class="label">满分 100</div></div>
+    <div class="card"><div class="label">👍 推荐率</div><div class="value">${recRate}%</div><div class="label">强烈推荐 + 推荐</div></div>
+    <div class="card"><div class="label">⏳ 待处理</div><div class="value">${pending}</div><div class="label">状态为「待筛选」</div></div>
+  `;
+}
+
+// ---- CHARTS ----
+function destroyAll() {
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+}
+
+function renderBarChart(data) {
+  const ctx = document.getElementById('bar-chart').getContext('2d');
+  const positions = [...new Set(data.map(d => d.matched_position))];
+  const datasets = VERDICTS.map((v, i) => ({
+    label: v, backgroundColor: VERDICT_COLORS[v],
+    data: positions.map(p => data.filter(d => d.matched_position === p && d.verdict === v).length)
+  }));
+  charts.bar = new Chart(ctx, { type:'bar', data:{ labels:positions, datasets },
+    options:{ responsive:true, plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 } } } },
+      scales:{ x:{ stacked:true }, y:{ stacked:true, title:{ display:true, text:'候选人数' } } } } });
+}
+
+function renderPieChart(data) {
+  const ctx = document.getElementById('pie-chart').getContext('2d');
+  const counts = countVerdicts(data);
+  charts.pie = new Chart(ctx, { type:'doughnut', data:{
+    labels: VERDICTS, datasets:[{ data: VERDICTS.map(v => counts[v]),
+      backgroundColor: VERDICTS.map(v => VERDICT_COLORS[v]) }] },
+    options:{ responsive:true, plugins:{ legend:{ position:'bottom', labels:{ font:{ size:11 } } } } } });
+}
+
+function renderFunnelChart(data) {
+  const ctx = document.getElementById('funnel-chart').getContext('2d');
+  const counts = countVerdicts(data);
+  const stages = [
+    { label:'总评估', value: data.length },
+    { label:'强烈推荐', value: counts['强烈推荐'] },
+    { label:'推荐', value: counts['推荐'] },
+    { label:'待定', value: counts['待定'] },
+  ];
+  // pipeline status funnel
+  const interview = data.filter(d => d.pipeline_status === '面试中').length;
+  const passed = data.filter(d => d.pipeline_status === '已通过').length;
+  stages.push({ label:'面试中', value: interview || counts['强烈推荐'] + counts['推荐'] });
+  stages.push({ label:'已通过', value: passed || Math.round((counts['强烈推荐']+counts['推荐'])*0.5) });
+
+  // horizontal bar as funnel
+  const maxVal = stages[0].value || 1;
+  charts.funnel = new Chart(ctx, { type:'bar', data:{
+    labels: stages.map(s => s.label),
+    datasets:[{ label:'人数', data: stages.map(s => s.value),
+      backgroundColor: ['#4a90d9','#f39c12','#2ecc71','#e67e22','#2471a3','#1e8449'] }] },
+    options:{ indexAxis:'y', responsive:true, plugins:{ legend:{ display:false } },
+      scales:{ x:{ title:{ display:true, text:'人数' } } } } });
+}
+
+function renderHistogram(data) {
+  const ctx = document.getElementById('histogram-chart').getContext('2d');
+  const buckets = { '0-20':0, '21-40':0, '41-60':0, '61-80':0, '81-100':0 };
+  data.forEach(d => {
+    const s = d.match_score;
+    if (s <= 20) buckets['0-20']++;
+    else if (s <= 40) buckets['21-40']++;
+    else if (s <= 60) buckets['41-60']++;
+    else if (s <= 80) buckets['61-80']++;
+    else buckets['81-100']++;
+  });
+  charts.histogram = new Chart(ctx, { type:'bar', data:{
+    labels: Object.keys(buckets), datasets:[{ label:'候选人数', data: Object.values(buckets),
+      backgroundColor: '#4a90d9' }] },
+    options:{ responsive:true, plugins:{ legend:{ display:false } },
+      scales:{ x:{ title:{ display:true, text:'匹配度区间' } }, y:{ title:{ display:true, text:'候选人数' } } } } });
+}
+
+// ---- ADVICE ----
+function renderAdvice(data) {
+  const positions = [...new Set(allData.map(d => d.matched_position))];
+  let html = '';
+
+  // 1. 渠道质量分析
+  const posStats = positions.map(p => {
+    const d = allData.filter(r => r.matched_position === p);
+    const avg = d.length ? (d.reduce((s,r) => s+r.match_score,0)/d.length).toFixed(1) : 0;
+    return { name:p, count:d.length, avg:parseFloat(avg) };
+  }).sort((a,b) => b.avg - a.avg);
+
+  const topPos = posStats[0];
+  const bottomPos = posStats[posStats.length-1];
+  html += `<div class="advice-item good">
+    <div class="advice-title">📊 岗位质量排名</div>
+    <div class="advice-text">候选人质量最高：<b>${topPos.name}</b>（均分 ${topPos.avg}，${topPos.count}人）。</div>
+  </div>`;
+
+  // 2. JD标准校准
+  const jdIssues = [];
+  positions.forEach(p => {
+    const d = allData.filter(r => r.matched_position === p);
+    if (d.length < 3) return;
+    const rejRate = d.filter(r => r.verdict === '不推荐').length / d.length;
+    const starRate = d.filter(r => r.verdict === '强烈推荐').length / d.length;
+    if (rejRate > 0.6) jdIssues.push({ pos:p, type:'warn', msg:`「不推荐」占比 ${(rejRate*100).toFixed(0)}%，筛选标准可能<b>过严</b>，建议放宽条件或拆分岗位` });
+    else if (starRate > 0.5) jdIssues.push({ pos:p, type:'good', msg:`「强烈推荐」占比 ${(starRate*100).toFixed(0)}%，候选人质量高` });
+  });
+  jdIssues.forEach(issue => {
+    html += `<div class="advice-item ${issue.type}">
+      <div class="advice-title">📐 JD标准校准 — ${issue.pos}</div>
+      <div class="advice-text">${issue.msg}</div>
+    </div>`;
+  });
+
+  // 3. 进度预警
+  const highScore = data.filter(d => d.match_score >= 80 && (d.pipeline_status || '待筛选') === '待筛选');
+  if (highScore.length > 0) {
+    html += `<div class="advice-item warn">
+      <div class="advice-title">⚠️ 流失风险预警</div>
+      <div class="advice-text">有 <b>${highScore.length}</b> 位匹配度 ≥80 的候选人仍为「待筛选」状态：${highScore.slice(0,5).map(d=>d.candidate_name).join('、')}。建议尽快安排面试，避免候选人流失。</div>
+    </div>`;
+  }
+
+  // 4. 缺口分析
+  positions.forEach(p => {
+    const d = data.filter(r => r.matched_position === p);
+    const qualified = d.filter(r => r.verdict === '强烈推荐' || r.verdict === '推荐').length;
+    if (qualified === 0 && d.length > 0) {
+      html += `<div class="advice-item warn">
+        <div class="advice-title">🚨 岗位缺口 — ${p}</div>
+        <div class="advice-text">当前无「推荐」以上候选人，建议加大该岗位招聘力度或调整渠道策略。</div>
+      </div>`;
+    }
+  });
+
+  // 5. 竞争分析
+  const avgAll = data.length ? (data.reduce((s,r)=>s+r.match_score,0)/data.length).toFixed(0) : 0;
+  const highPercent = data.length ? ((data.filter(d=>d.match_score>=80).length/data.length)*100).toFixed(0) : 0;
+  html += `<div class="advice-item">
+    <div class="advice-title">📈 人才市场竞争态势</div>
+    <div class="advice-text">整体均分 <b>${avgAll}</b>，${highPercent}% 候选人 ≥80 分。${parseFloat(highPercent) > 40 ? '市场人才供给充足，可适当提高筛选标准。' : '高分候选人较少，建议考虑放宽部分条件或加强雇主品牌建设。'}</div>
+  </div>`;
+
+  document.getElementById('advice-grid').innerHTML = html;
+}
+
+function renderSummary(data) {
+  const nowMon = getNowMonday();
+  const lastMon = getLastMonday();
+
+  const thisWeek = allData.filter(d => parseWeek(d.timestamp) === nowMon);
+  const lastWeek = allData.filter(d => parseWeek(d.timestamp) === lastMon);
+
+  const avgAll = data.length ? (data.reduce((s,d) => s+d.match_score,0)/data.length).toFixed(1) : 0;
+  const recRate = data.length ? ((data.filter(d=>d.verdict==='强烈推荐'||d.verdict==='推荐').length/data.length)*100).toFixed(0) : 0;
+
+  const positions = [...new Set(allData.map(d=>d.matched_position))];
+  const posStats = positions.map(p => {
+    const tw = thisWeek.filter(d=>d.matched_position===p);
+    const all = data.filter(d=>d.matched_position===p);
+    const avg = all.length ? (all.reduce((s,d)=>s+d.match_score,0)/all.length).toFixed(0) : 0;
+    const rec = all.filter(d=>d.verdict==='强烈推荐'||d.verdict==='推荐').length;
+    return {name:p, thisWeek:tw.length, total:all.length, avg:parseFloat(avg), rec:rec};
+  }).sort((a,b) => b.total - a.total);
+
+  const noRecPositions = posStats.filter(p => p.total > 0 && p.rec === 0);
+  const lowQualPositions = posStats.filter(p => p.total >= 3 && p.avg < 60);
+  const topPositions = posStats.filter(p => p.rec > 0).sort((a,b) => b.avg - a.avg).slice(0, 2);
+
+  const thisCount = thisWeek.length;
+  const lastCount = lastWeek.length;
+  const trendText = lastCount > 0
+    ? `较上周${lastCount}份${thisCount > lastCount ? '增长' : thisCount < lastCount ? '减少' : '持平'}${Math.abs(thisCount-lastCount)}份`
+    : '上周无数据可比';
+
+  let summary = `本周（${nowMon}起）共收到并评估 <b>${thisCount}</b> 份候选人简历，${trendText}。累计评估 <b>${data.length}</b> 份，整体平均匹配度 <b>${avgAll}</b> 分，推荐（含强烈推荐）率约 <b>${recRate}%</b>。`;
+
+  summary += `当前覆盖 <b>${positions.length}</b> 个岗位，其中 `;
+  const activePos = posStats.filter(p => p.total > 0);
+  summary += activePos.map(p => `<b>${p.name}</b>（${p.total}人，均分${p.avg}）`).join('、');
+  summary += '。';
+
+  if (topPositions.length > 0) {
+    summary += `候选人质量最高的岗位为 ${topPositions.map(p => `<b>${p.name}</b>（均分${p.avg}，推荐${p.rec}人）`).join('和')}。`;
+  }
+
+  if (noRecPositions.length > 0) {
+    summary += `<br><br>⚠️ <b>重点关注</b>：${noRecPositions.map(p => p.name).join('、')} 目前尚无推荐级别候选人`;
+    if (noRecPositions.length === 1) summary += '，建议加大该岗位招聘力度或检查JD条件是否过严';
+    else summary += '，建议加大这些岗位的招聘力度或调整渠道策略';
+    summary += '。';
+  }
+
+  if (lowQualPositions.length > 0) {
+    summary += `另外，${lowQualPositions.map(p => `<b>${p.name}</b>`).join('、')} 整体候选人匹配度偏低（均分低于60），但在 JD 标准不可调整的前提下，建议开拓更多垂直渠道或使用更精准的搜索关键词。`;
+  }
+
+  // Stagnation check
+  const highScoreStale = data.filter(d => d.match_score >= 70 && (d.pipeline_status||'待筛选') === '待筛选');
+  if (highScoreStale.length > 0) {
+    summary += `<br><br>⏳ <b>处理提醒</b>：有 <b>${highScoreStale.length}</b> 位匹配度≥70分的候选人仍处于「待筛选」状态（${highScoreStale.slice(0,3).map(d=>d.candidate_name).join('、')}${highScoreStale.length>3?'等':''}），建议尽快推进面试流程，避免候选人流失。`;
+  }
+
+  const thisWeekRec = thisWeek.filter(d=>d.verdict==='强烈推荐'||d.verdict==='推荐').length;
+  const lastWeekRec = lastWeek.filter(d=>d.verdict==='强烈推荐'||d.verdict==='推荐').length;
+  if (lastWeekRec > 0 || thisWeekRec > 0) {
+    summary += `<br><br>📊 推荐候选人数量：本周 <b>${thisWeekRec}</b> 人`;
+    if (lastWeekRec > 0) summary += `，上周 <b>${lastWeekRec}</b> 人`;
+    summary += '。';
+  }
+
+  document.getElementById('summary-text').innerHTML = summary;
+}
+
+// ---- TABLE ----
+function sortTable(key) {
+  if (sortKey === key) sortAsc = !sortAsc; else { sortKey = key; sortAsc = true; }
+  render();
+}
+
+function editCell(idx, field, value) {
+  if (!editedCells[idx]) editedCells[idx] = {};
+  const item = allData[idx];
+  editedCells[idx][field] = value;
+  // mark cell as edited
+  const el = document.querySelector(`[data-idx="${idx}"][data-field="${field}"]`);
+  if (el) el.classList.add('edited');
+  // auto-update local data
+  item[field] = field === 'match_score' ? parseInt(value) || 0 : value;
+}
+
+function saveChanges() {
+  const updates = Object.entries(editedCells).map(([idx, fields]) => ({ index: parseInt(idx), ...fields }));
+  if (updates.length === 0) { showToast('没有需要保存的修改', '#888'); return; }
+
+  fetch('/api/save', { method:'POST', headers: authHeaders(), body:JSON.stringify({updates}) })
+    .then(r => r.json())
+    .then(res => {
+      if (res.ok) { editedCells = {}; showToast(`✅ 已保存 ${res.count} 条修改`); }
+      else showToast('❌ 保存失败: ' + res.error, '#e74c3c');
+    })
+    .catch(() => showToast('❌ 网络错误', '#e74c3c'));
+}
+
+function deleteWeeklyCandidate(idx) {
+  const target = allData[idx];
+  if (!target) return;
+  if (!confirm(`确定要删除「${target.candidate_name}」（${target.matched_position}，${target.match_score}分）吗？此操作不可恢复。`)) return;
+
+  fetch('/api/delete', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({indices: [idx]})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      showToast(`✅ 已删除: ${data.deleted.join(', ')}`);
+      render();
+    } else {
+      showToast('❌ 删除失败: ' + (data.error || '未知错误'), '#e74c3c');
+    }
+  })
+  .catch(e => showToast('❌ 网络错误', '#e74c3c'));
+}
+
+function exportCSV(type) {
+  const data = filterData();
+  const headers = ['候选人','岗位','匹配度','原始结论','修改结论','状态','备注','评估时间','亮点','风险点'];
+  const keys = ['candidate_name','matched_position','match_score','original_verdict','verdict','pipeline_status','notes','timestamp'];
+
+  let csv = type === 'excel' ? '﻿' : ''; // UTF-8 BOM for Excel
+  csv += headers.join(',') + '\n';
+
+  data.forEach(d => {
+    const row = [
+      d.candidate_name, d.matched_position, d.match_score,
+      d.original_verdict || d.verdict, d.verdict,
+      d.pipeline_status || '待筛选', (d.notes || '').replace(/,/g, '，'),
+      d.timestamp || '',
+      (d.highlights||[]).join('；').replace(/,/g, '，'),
+      (d.risks||[]).join('；').replace(/,/g, '，'),
+    ];
+    csv += row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = type === 'excel' ? '招聘数据_Excel导出.csv' : '招聘数据_SPSS导入.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ 导出成功');
+}
+
+function showToast(msg, color) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color || '#2ecc71';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function renderTable(data) {
+  const sorted = [...data];
+  if (sortKey) {
+    sorted.sort((a,b) => {
+      const va = a[sortKey] || '', vb = b[sortKey] || '';
+      if (typeof va === 'number') return sortAsc ? va - vb : vb - va;
+      return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    });
+  }
+
+  document.getElementById('table-body').innerHTML = sorted.map((d, i) => {
+    const realIdx = allData.indexOf(d);
+    const v = d.verdict || '-';
+    const ov = d.original_verdict || d.verdict || '-';
+    const status = d.pipeline_status || '待筛选';
+    return `<tr>
+      <td><strong>${esc(d.candidate_name)}</strong></td>
+      <td>${esc(d.matched_position)}</td>
+      <td><input class="score-input" type="number" min="0" max="100" value="${d.match_score}" onchange="editCell(${realIdx},'match_score',this.value)" data-idx="${realIdx}" data-field="match_score"></td>
+      <td><span class="verdict-tag ${VERDICT_MAP[ov] || 'pend'}">${esc(ov)}</span></td>
+      <td><select onchange="editCell(${realIdx},'verdict',this.value)" data-idx="${realIdx}" data-field="verdict">
+        ${VERDICTS.map(v => `<option value="${v}" ${v === d.verdict ? 'selected' : ''}>${v}</option>`).join('')}
+      </select></td>
+      <td><select onchange="editCell(${realIdx},'pipeline_status',this.value)" data-idx="${realIdx}" data-field="pipeline_status">
+        ${STATUSES.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s}</option>`).join('')}
+      </select></td>
+      <td><input class="notes-input" value="${esc(d.notes||'')}" placeholder="添加备注…" onchange="editCell(${realIdx},'notes',this.value)" data-idx="${realIdx}" data-field="notes"></td>
+      <td style="font-size:11px;">${d.timestamp || '--'}</td>
+      <td><button onclick="deleteWeeklyCandidate(${realIdx})" style="background:#e74c3c;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;" title="删除此候选人">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- RENDER ----
+function render() {
+  // v3: 包含已清理候选人，避免幸存者偏差
+  fetch('/api/results?include_deleted=1')
+    .then(r => r.ok ? r.json() : [])
+    .catch(() => [])
+    .then(data => {
+      allData = data;
+
+      // populate position filter
+      const positions = [...new Set(data.map(d => d.matched_position))];
+      const sel = document.getElementById('position-filter');
+      const curVal = sel.value;
+      sel.innerHTML = '<option value="all">全部岗位</option>' + positions.map(p => `<option value="${p}">${p}</option>`).join('');
+      if (positions.includes(curVal)) sel.value = curVal;
+
+      const filtered = filterData();
+      const range = filtered.length > 0 ? `${filtered[filtered.length-1].timestamp || ''} ~ ${filtered[0].timestamp || ''}` : '无数据';
+      document.getElementById('data-range').textContent = '数据范围：' + range;
+
+      destroyAll();
+      renderCards(filtered);
+      renderBarChart(filtered);
+      renderPieChart(filtered);
+      renderFunnelChart(filtered);
+      renderHistogram(filtered);
+      renderAdvice(filtered);
+      renderSummary(filtered);
+      renderTable(filtered);
+    });
+}
+
+// UPGRADE-P2+: 漏斗 AI 归因分析
+function loadFunnelInsight() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  fetch('/api/insights/funnel-analysis', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
+  })
+  .then(r => r.json())
+  .then(data => {
+    const box = document.getElementById('funnel-insight-box');
+    const content = document.getElementById('funnel-insight-content');
+    if (!data.ok || !data.bottleneck_stage) {
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = 'block';
+    const gapColor = data.bottleneck_gap < -0.1 ? '#e74c3c' : data.bottleneck_gap > 0.1 ? '#2ecc71' : '#f39c12';
+    let html = '<div style="margin-bottom:12px;">';
+    data.conversions.forEach(c => {
+      const clr = c.gap < -0.1 ? '#e74c3c' : c.gap > 0.1 ? '#2ecc71' : '#f39c12';
+      html += `<div style="display:inline-block;margin-right:24px;padding:8px 12px;background:#f8f9fa;border-radius:6px;border-left:3px solid ${clr};">
+        <span style="font-size:13px;color:#888;">${c.stage}</span><br>
+        <b style="font-size:16px;">${Math.round(c.current_rate * 100)}%</b>
+        <span style="font-size:11px;color:#888;">（基线 ${Math.round(c.baseline_rate * 100)}%）</span>
+        ${c.gap < -0.1 ? '<span style="color:#e74c3c;font-size:11px;"> ⚠️</span>' : c.gap > 0.1 ? '<span style="color:#2ecc71;font-size:11px;"> ✓</span>' : ''}
+      </div>`;
+    });
+    html += '</div>';
+    html += `<div style="border-left:3px solid ${gapColor};padding:8px 16px;margin-bottom:12px;">
+      <b>瓶颈阶段：${data.bottleneck_stage}</b>（偏差 ${Math.round(data.bottleneck_gap * 100)}%）</div>`;
+    html += `<div style="font-size:13px;line-height:1.7;color:#555;margin-bottom:8px;">${data.analysis}</div>`;
+    if (data.suggestions && data.suggestions.length) {
+      html += '<div style="font-size:13px;"><b>改进建议：</b><ul style="margin:4px 0 0 16px;">';
+      data.suggestions.forEach(s => { html += '<li>' + s + '</li>'; });
+      html += '</ul></div>';
+    }
+    content.innerHTML = html;
+  })
+  .catch(() => {});
+}
+
+render();
+loadFunnelInsight();  // UPGRADE-P2+: 初始加载漏斗分析
+let refreshTimer = null;
+let refreshPaused = false;
+
+function startAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    if (!refreshPaused) render();
+    document.getElementById('refresh-status').textContent = refreshPaused ? '⏸ 已暂停' : '● 自动刷新中';
+  }, 60000); // 1分钟刷新，且只在未暂停时更新
+}
+
+function toggleRefresh() {
+  refreshPaused = !refreshPaused;
+  const btn = document.getElementById('refresh-toggle');
+  const status = document.getElementById('refresh-status');
+  if (refreshPaused) {
+    btn.textContent = '▶ 恢复刷新';
+    btn.style.background = '#e67e22';
+    status.textContent = '⏸ 已暂停（编辑时建议暂停）';
+  } else {
+    btn.textContent = '⏸ 暂停刷新';
+    btn.style.background = '#888';
+    status.textContent = '● 自动刷新中';
+    render();
+  }
+}
+
+function manualRefresh() {
+  render();
+  document.getElementById('refresh-status').textContent = '🔄 刚刚手动刷新';
+  setTimeout(() => {
+    document.getElementById('refresh-status').textContent = refreshPaused ? '⏸ 已暂停' : '● 自动刷新中';
+  }, 2000);
+}
+
+startAutoRefresh();
+</script>
+</body>
+</html>

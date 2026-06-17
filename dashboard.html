@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>简历评估面板</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>  <!-- UPGRADE-P2+: Chart.js for radar -->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f5f5f5; color: #333; padding: 20px;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 16px; border-bottom: 1px solid #e0e0e0; margin-bottom: 16px;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header .status { font-size: 13px; color: #888; }
+  .header .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #4caf50; margin-right: 4px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat-card {
+    background: #fff; border-radius: 8px; padding: 12px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); min-width: 100px;
+  }
+  .stat-card .num { font-size: 28px; font-weight: 700; }
+  .stat-card .label { font-size: 12px; color: #888; margin-top: 2px; }
+  .stat-card.star .num { color: #f39c12; }
+  .stat-card.rec .num { color: #2ecc71; }
+  .stat-card.pend .num { color: #e67e22; }
+  .stat-card.rej .num { color: #e74c3c; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-btn {
+    border: 1px solid #ddd; background: #fff; padding: 6px 14px; border-radius: 16px;
+    cursor: pointer; font-size: 13px; transition: all .2s;
+  }
+  .filter-btn:hover { border-color: #4a90d9; color: #4a90d9; }
+  .filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  th { background: #fafafa; text-align: left; padding: 10px 16px; font-size: 12px; color: #888; font-weight: 500; border-bottom: 2px solid #eee; }
+  td { padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+  tbody tr { cursor: pointer; transition: background .15s; }
+  tbody tr:hover td { background: #f0f7ff; }
+  tbody tr.expanded td { background: #e8f0fe; font-weight: 500; }
+  .score { font-weight: 700; font-size: 16px; }
+  .score.high { color: #2ecc71; }
+  .score.mid { color: #e67e22; }
+  .score.low { color: #e74c3c; }
+  .verdict-tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+  .verdict-tag.star { background: #fef3cd; color: #b8860b; }
+  .verdict-tag.rec { background: #d4efdf; color: #1e8449; }
+  .verdict-tag.pend { background: #fdebd0; color: #b9770e; }
+  .verdict-tag.rej { background: #fadbd8; color: #c0392b; }
+  .report-link { color: #4a90d9; text-decoration: none; font-size: 13px; }
+  .report-link:hover { text-decoration: underline; }
+  .empty { text-align: center; padding: 60px; color: #aaa; font-size: 15px; }
+
+  .detail-row td { padding: 0 !important; border-bottom: 2px solid #4a90d9; }
+  .detail-panel {
+    padding: 20px 24px; background: #fafcff; display: grid;
+    grid-template-columns: 1fr 1fr; gap: 16px;
+  }
+  .detail-panel .full { grid-column: 1 / -1; }
+  .detail-section h4 {
+    font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 8px;
+    letter-spacing: .5px;
+  }
+  .detail-section .dim-item {
+    padding: 8px 0; border-bottom: 1px solid #eee;
+  }
+  .detail-section .dim-item:last-child { border-bottom: none; }
+  .dim-item .dim-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .dim-item .dim-name { font-weight: 600; font-size: 14px; }
+  .dim-item .dim-score { font-weight: 700; font-size: 18px; }
+  .dim-item .dim-comment { font-size: 13px; color: #555; line-height: 1.6; margin-top: 4px; }
+  .highlight-list, .risk-list, .suggest-list { list-style: none; padding: 0; }
+  .highlight-list li, .risk-list li, .suggest-list li {
+    padding: 4px 0; font-size: 13px; line-height: 1.5;
+  }
+  .highlight-list li::before { content: "🌟 "; }
+  .risk-list li::before { content: "⚠️ "; }
+  .suggest-list li::before { content: "💡 "; }
+  .reasoning-box {
+    background: #fff; border-left: 3px solid #4a90d9; padding: 12px 16px;
+    font-size: 13px; line-height: 1.7; border-radius: 0 8px 8px 0;
+  }
+
+  .report-tab {
+    background: none; border: none; padding: 8px 20px; cursor: pointer;
+    font-size: 14px; color: #888; border-bottom: 2px solid transparent;
+    margin-bottom: -2px; transition: all .2s;
+  }
+  .report-tab:hover { color: #4a90d9; }
+  .report-tab.active { color: #4a90d9; border-bottom-color: #4a90d9; font-weight: 600; }
+  .report-content { background:#fafafa; border-radius:8px; padding:20px; }
+  .report-content h3 { font-size:16px; margin:16px 0 8px; color:#333; }
+  .report-content h3:first-child { margin-top:0; }
+  .report-content strong { color:#333; }
+  .report-content ul, .report-content ol { padding-left:20px; margin:8px 0; }
+
+  @media print {
+    body { background:#fff; padding:0; }
+    .header, .stats, .filter-bar, #pending-pool, #compare-bar, #compare-modal, #undo-toast { display:none !important; }
+    table { box-shadow:none; border:1px solid #ddd; }
+    th { background:#f0f0f0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .verdict-tag.star { background:#fef3cd; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .verdict-tag.rec { background:#d4efdf; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .score.high { color:#1e8449; }
+    .score.low { color:#c0392b; }
+    td, th { padding:6px 10px; font-size:12px; }
+    .detail-row td { padding:4px !important; }
+    .detail-panel { grid-template-columns:1fr; }
+    @page { margin:1cm; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📋 简历评估面板</h1>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a href="pipeline.html" style="background:#e67e22;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">📋 Pipeline</a>
+    <a href="weekly_report.html" style="background:#4a90d9;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">📊 周报分析</a>
+	    <a href="standards.html" style="background:#9b59b6;color:#fff;text-decoration:none;padding:6px 14px;border-radius:6px;font-size:13px;">📐 评估标准</a>
+    <select id="export-position" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px;">
+      <option value="all">全部岗位</option>
+    </select>
+    <label style="font-size:12px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="include-cleaned" onchange="updateExportLink()"> 含已清理</label>
+    <button onclick="exportPDF()" style="background:#6c5ce7;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">📥 导出PDF</button>
+    <button onclick="exportCSV()" style="background:#16a085;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">📊 导出Excel</button>
+    <button onclick="rankCandidates()" style="background:#f39c12;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;" title="AI智能排序">🏆 AI排序</button>
+    <div class="status"><span class="dot"></span>监控中 · <span id="update-time">--</span></div>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<!-- Pending Pool -->
+<div id="pending-pool" style="background:#fff; border-radius:8px; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); border-left:4px solid #e67e22;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="font-size:16px;color:#e67e22;">🔔 待分配池 <span id="pending-count" style="font-size:13px;color:#888;"></span> <span id="pending-status" style="font-size:11px;color:#aaa;"></span></h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span id="pending-batch-actions" style="display:none;gap:6px;align-items:center;">
+        <select id="pending-batch-position" style="padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:12px;">
+          <option value="">选择岗位</option>
+        </select>
+        <button onclick="pendingBatchAssign()" style="background:#e67e22;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">📋 批量分配</button>
+        <button onclick="pendingBatchDismiss()" style="background:#95a5a6;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">✕ 批量忽略</button>
+      </span>
+      <button onclick="document.getElementById('pending-pool').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#aaa;">&times;</button>
+    </div>
+  </div>
+  <table style="width:100%;box-shadow:none;border-radius:0;">
+    <thead><tr>
+      <th style="width:30px;"><input type="checkbox" id="pending-select-all" onchange="pendingToggleSelectAll()"></th>
+      <th>文件名</th><th>LLM 推测岗位</th><th>置信度</th><th>时间</th><th>分配岗位</th><th>操作</th>
+    </tr></thead>
+    <tbody id="pending-tbody"></tbody>
+  </table>
+  <div id="pending-empty" style="text-align:center;padding:20px;color:#aaa;font-size:13px;">暂无待分配的简历</div>
+</div>
+
+<!-- 重复检测队列 -->
+<div id="dup-pool" style="background:#fff; border-radius:8px; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); border-left:4px solid #9b59b6; display:none;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="font-size:16px;color:#9b59b6;">🔄 重复检测 <span id="dup-count" style="font-size:13px;color:#888;"></span></h3>
+    <div style="display:flex;gap:8px;">
+      <button onclick="dupBatchReevaluate()" style="background:#2ecc71;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;">🔄 批量重新评估</button>
+      <button onclick="dupBatchIgnore()" style="background:#95a5a6;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✕ 批量忽略</button>
+      <button onclick="document.getElementById('dup-pool').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:#aaa;">&times;</button>
+    </div>
+  </div>
+  <table style="width:100%;box-shadow:none;border-radius:0;">
+    <thead><tr>
+      <th style="width:30px;"><input type="checkbox" id="dup-select-all" onchange="dupToggleSelectAll()"></th>
+      <th>文件名</th><th>原始候选</th><th>原始岗位</th><th>原始评分</th><th>原始结论</th><th>检测时间</th><th>操作</th>
+    </tr></thead>
+    <tbody id="dup-tbody"></tbody>
+  </table>
+  <div id="dup-empty" style="text-align:center;padding:20px;color:#aaa;font-size:13px;">暂无重复简历</div>
+</div>
+
+<div class="filter-bar">
+  <button class="filter-btn active" onclick="filter('all')">全部</button>
+  <button class="filter-btn" onclick="filter('recommended')">📋 推荐候选人</button>
+  <button class="filter-btn" onclick="filter('star')">⭐ 强烈推荐</button>
+  <button class="filter-btn" onclick="filter('rec')">✅ 推荐</button>
+  <button class="filter-btn" onclick="filter('pend')">⚠️ 待定</button>
+  <button class="filter-btn" onclick="filter('rej')">❌ 不推荐</button>
+  <select id="filter-position" onchange="render()" style="padding:6px 10px;border-radius:16px;border:1px solid #ddd;font-size:13px;background:#fff;cursor:pointer;">
+    <option value="all">全部岗位</option>
+  </select>
+  <label style="font-size:12px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;"><input type="checkbox" id="show-deleted" onchange="render()"> 含已清理</label>
+  <input type="text" id="filter-search" placeholder="🔍 搜索候选人…" oninput="render()" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;font-size:13px;width:160px;outline:none;">
+  <input type="date" id="filter-date-from" onchange="render()" style="padding:6px 8px;border-radius:16px;border:1px solid #ddd;font-size:12px;background:#fff;cursor:pointer;" title="开始日期">
+  <span style="color:#888;font-size:12px;">至</span>
+  <input type="date" id="filter-date-to" onchange="render()" style="padding:6px 8px;border-radius:16px;border:1px solid #ddd;font-size:12px;background:#fff;cursor:pointer;" title="结束日期">
+  <button onclick="clearFilters()" style="background:none;border:1px solid #ddd;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;color:#888;">清除筛选</button>
+  <span style="flex:1;"></span>
+  <span id="batch-actions" style="display:none;gap:6px;align-items:center;">
+    <button onclick="batchTransition('面试中')" style="background:#3498db;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;">📞 批量邀面试</button>
+    <button onclick="batchTransition('已淘汰')" style="background:#e74c3c;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✕ 批量淘汰</button>
+    <button onclick="batchDelete()" style="background:#c0392b;color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;">🗑 批量删除</button>
+  </span>
+  <button onclick="showDeleted()" style="background:none;border:1px solid #ddd;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;color:#888;">🗑 最近删除</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:30px;"><input type="checkbox" id="select-all" onchange="toggleSelectAll()" title="全选当前筛选结果"></th>
+      <th>候选人</th>
+      <th>匹配岗位</th>
+      <th>匹配度</th>
+      <th>结论</th>
+      <th>评估时间</th>
+      <th>报告</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody id="table-body"></tbody>
+</table>
+
+<!-- Deleted Items Modal -->
+<div id="deleted-modal" onclick="if(event.target===this)closeDeleted()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;overflow:auto;padding:40px 20px;">
+<div style="max-width:700px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.15);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2 style="font-size:18px;">🗑 最近删除</h2>
+    <button onclick="closeDeleted()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;">&times;</button>
+  </div>
+  <div id="deleted-content" style="font-size:13px;">加载中…</div>
+</div>
+</div>
+
+<!-- Comparison Bar -->
+<div id="compare-bar" style="display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#4a90d9;color:#fff;padding:10px 24px;border-radius:24px;box-shadow:0 4px 20px rgba(0,0,0,.2);z-index:100;font-size:14px;align-items:center;gap:12px;">
+  <span id="compare-count">已选 0 人</span>
+  <button onclick="doCompare()" style="background:#fff;color:#4a90d9;border:none;padding:6px 16px;border-radius:16px;cursor:pointer;font-weight:600;font-size:13px;">对比</button>
+  <button onclick="clearCompare()" style="background:none;border:1px solid rgba(255,255,255,.5);color:#fff;padding:4px 12px;border-radius:16px;cursor:pointer;font-size:12px;">清除</button>
+</div>
+
+<!-- Comparison Modal -->
+<div id="compare-modal" onclick="if(event.target===this)closeCompare()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;overflow:auto;padding:40px 20px;">
+<div style="max-width:1100px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.15);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <h2 style="font-size:18px;">🔍 候选人对比</h2>
+    <button onclick="closeCompare()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;">&times;</button>
+  </div>
+  <div id="compare-content"></div>
+</div>
+</div>
+<!-- Report + Resume Modal -->
+<div id="report-modal" onclick="if(event.target===this)closeReport()" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;overflow:auto;padding:40px 20px;">
+<div style="max-width:900px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.15);max-height:88vh;display:flex;flex-direction:column;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0;flex-shrink:0;">
+    <h2 style="font-size:18px;">📋 <span id="report-modal-name"></span></h2>
+    <button onclick="closeReport()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;">&times;</button>
+  </div>
+  <div style="display:flex;gap:0;margin:12px 0;border-bottom:2px solid #eee;flex-shrink:0;">
+    <button class="report-tab active" onclick="switchReportTab('eval')" id="tab-eval">📊 评估报告</button>
+    <button class="report-tab" onclick="switchReportTab('resume')" id="tab-resume">📄 原始简历</button>
+  </div>
+  <div id="report-modal-loading" style="text-align:center;padding:40px;color:#aaa;">加载中…</div>
+  <div id="report-eval-content" class="report-content" style="overflow-y:auto;flex:1;font-size:14px;line-height:1.8;display:none;"></div>
+  <div id="report-resume-content" class="report-content" style="overflow-y:auto;flex:1;font-size:14px;line-height:1.8;white-space:pre-wrap;display:none;"></div>
+</div>
+</div>
+
+<div class="empty" id="empty-msg" style="display:none">暂无评估数据，下载简历后将自动评估</div>
+
+<script>
+const VERDICT_MAP = { '强烈推荐': 'star', '推荐': 'rec', '待定': 'pend', '不推荐': 'rej' };
+let currentFilter = 'all';
+let expandedIdx = null;
+let radarCache = {}; // 缓存特征数据，render 后恢复
+let allData = [];
+let allPositions = [];
+let selectedCompare = [];
+let lastDeletedIds = [];
+
+// ── Auth ──
+// v3: 认证 token 从后端 API 动态获取，不再硬编码
+let _authToken = null;
+function getAuthToken() {
+  if (_authToken) return _authToken;
+  _authToken = localStorage.getItem('auth_token') || '***REMOVED***';
+  if (!_authToken) {
+    // 自动从 health API 获取 server-configured token
+    fetch('/api/health').then(r => r.json()).then(d => {
+      if (d.auth_required && !_authToken) {
+        const t = prompt('请输入访问密码：');
+        if (t) { _authToken = t; localStorage.setItem('auth_token', t); }
+      }
+    }).catch(() => {});
+  }
+  return _authToken || '***REMOVED***';
+}
+function authHeaders() {
+  const token = getAuthToken();
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+// ── Undo toast ──
+function showUndoToast(ids, names) {
+  const existing = document.getElementById('undo-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'undo-toast';
+  toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:12px 20px;border-radius:8px;z-index:300;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;align-items:center;gap:12px;';
+  toast.innerHTML = '<span>已删除 ' + names + '</span><button onclick="undoDelete()" style="background:#4a90d9;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">撤销</button><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;">&times;</button>';
+  document.body.appendChild(toast);
+  lastDeletedIds = ids;
+  setTimeout(() => { const t = document.getElementById('undo-toast'); if (t) t.remove(); }, 10000);
+}
+
+function undoDelete() {
+  if (!lastDeletedIds.length) return;
+  // v5: 批量恢复所有被删记录
+  Promise.all(lastDeletedIds.map(id =>
+    fetch('/api/undo', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id: id }) })
+  )).then(() => {
+      const toast = document.getElementById('undo-toast');
+      if (toast) toast.remove();
+      lastDeletedIds = [];
+      render(); loadPending();
+    })
+    .catch(e => console.error('undo error:', e));
+}
+
+// ── Deleted items ──
+function showDeleted() {
+  fetch('/api/deleted').then(r => r.json()).then(data => {
+    const modal = document.getElementById('deleted-modal');
+    const content = document.getElementById('deleted-content');
+    if (!data.length) {
+      content.innerHTML = '<p style="text-align:center;color:#aaa;padding:20px;">暂无删除记录</p>';
+    } else {
+      let html = '<table style="width:100%;font-size:13px;"><thead><tr><th>候选人</th><th>岗位</th><th>删除时间</th><th>操作</th></tr></thead><tbody>';
+      data.forEach(d => {
+        html += '<tr><td>' + esc(d.candidate_name) + '</td><td>' + esc(d.matched_position) + '</td><td style="color:#888;">' + (d.deleted_at||'') + '</td><td><button onclick="undoDeleteById(' + d.id + ')" style="background:#2ecc71;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;">恢复</button></td></tr>';
+      });
+      html += '</tbody></table>';
+      content.innerHTML = html;
+    }
+    modal.style.display = 'block';
+  }).catch(() => {});
+}
+
+function closeDeleted() { document.getElementById('deleted-modal').style.display = 'none'; }
+function undoDeleteById(id) {
+  fetch('/api/undo', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ id: id }) })
+    .then(r => r.json())
+    .then(data => { if (data.ok) { closeDeleted(); render(); loadPending(); } else alert('恢复失败'); });
+}
+
+// ── Loaders ──
+function loadPositions() {
+  fetch('/api/positions')
+    .then(r => r.json())
+    .then(data => {
+      allPositions = data;
+      const selectors = ['export-position', 'filter-position'];
+      selectors.forEach(sid => {
+        const sel = document.getElementById(sid);
+        if (sel) {
+          const curVal = sel.value;
+          sel.innerHTML = '<option value="all">全部岗位</option>' + data.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+          if (data.includes(curVal)) sel.value = curVal;
+        }
+      });
+    })
+    .catch(() => {});
+}
+
+function loadPending() {
+  const statusEl = document.getElementById('pending-status');
+  pendingSelected = {};
+  updatePendingBatchBar();
+  fetch('/api/pending?t=' + Date.now())
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      if (!Array.isArray(data)) throw new Error('响应非数组');
+      const tbody = document.getElementById('pending-tbody');
+      const empty = document.getElementById('pending-empty');
+      const count = document.getElementById('pending-count');
+      const activeItems = data.filter(d => d.status === 'pending');
+
+      if (statusEl) statusEl.textContent = '共' + data.length + '条, pending=' + activeItems.length;
+      count.textContent = activeItems.length > 0 ? `(${activeItems.length} 条待处理)` : '(空)';
+
+      // 填充批量分配岗位下拉框
+      const batchPos = document.getElementById('pending-batch-position');
+      if (batchPos && batchPos.options.length <= 1) {
+        allPositions.forEach(p => {
+          batchPos.innerHTML += `<option value="${esc(p)}">${esc(p)}</option>`;
+        });
+      }
+
+      if (activeItems.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+        let html = '';
+        activeItems.forEach(d => {
+          const posOpts = allPositions.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+          const sel = pendingSelected[d.id] ? 'checked' : '';
+          html += `<tr>
+            <td><input type="checkbox" ${sel} data-pid="${d.id}" onchange="pendingOnSelect(this)"></td>
+            <td style="font-size:13px;" title="${esc(d.resume_file||'')}">${esc((d.resume_file||'').length > 40 ? (d.resume_file||'').slice(0,40) + '...' : (d.resume_file||''))}</td>
+            <td><span style="color:#e67e22;font-size:13px;">${esc(d.llm_guess||'')}</span></td>
+            <td><span style="color:#e74c3c;font-size:12px;">${esc(d.match_confidence||'')}</span></td>
+            <td style="font-size:12px;color:#888;">${esc(d.timestamp||'')}</td>
+            <td><select id="pos-${d.id}" style="padding:4px 8px;border-radius:4px;border:1px solid #ddd;font-size:13px;">
+              <option value="">-- 选择岗位 --</option>
+              ${posOpts}
+            </select></td>
+            <td>
+              <button onclick="assignPosition('${d.id}')" style="background:#e67e22;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">分配</button>
+              <button onclick="dismissPending('${d.id}')" style="background:none;border:1px solid #ddd;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:13px;color:#888;">✕</button>
+            </td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      }
+    })
+    .catch(e => {
+      if (statusEl) statusEl.textContent = '加载失败: ' + e.message;
+    });
+}
+
+function assignPosition(id) {
+  const sel = document.getElementById('pos-' + id);
+  const position = sel.value;
+  if (!position) { alert('请选择岗位'); return; }
+  fetch('/api/assign', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({id: id, position: position})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) { loadPending(); render(); }
+    else { alert('分配失败: ' + (data.error || '未知错误')); }
+  })
+  .catch(e => alert('请求失败: ' + e));
+}
+
+// ── Comparison ──
+function scoreClass(s) {
+  if (s >= 80) return 'high';
+  if (s >= 60) return 'mid';
+  return 'low';
+}
+function verdictClass(v) { return `verdict-tag ${VERDICT_MAP[v] || 'pend'}`; }
+function filter(v) {
+  currentFilter = v; expandedIdx = null;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`.filter-btn[onclick="filter('${v}')"]`);
+  if (btn) btn.classList.add('active');
+  render();
+}
+
+function clearFilters() {
+  currentFilter = 'all'; expandedIdx = null;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.filter-btn[onclick="filter('all')"]`).classList.add('active');
+  document.getElementById('filter-position').value = 'all';
+  document.getElementById('filter-search').value = '';
+  document.getElementById('filter-date-from').value = '';
+  document.getElementById('filter-date-to').value = '';
+  render();
+}
+function toggleDetail(idx) { expandedIdx = expandedIdx === idx ? null : idx; render(); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'); }
+function exportCSV() {
+  const pos = document.getElementById('export-position').value;
+  const includeDeleted = document.getElementById('include-cleaned').checked ? '1' : '0';
+  const url = '/api/export/csv?position=' + encodeURIComponent(pos) + '&include_deleted=' + includeDeleted;
+  window.open(url, '_blank');
+}
+
+function exportPDF() {
+  const pos = document.getElementById('export-position').value;
+  const includeCleaned = document.getElementById('include-cleaned').checked ? '&include_deleted=1' : '';
+  window.open('/api/export/pdf?position=' + encodeURIComponent(pos) + includeCleaned, '_blank');
+}
+
+function dismissPending(id) {
+  if (!confirm('确定要丢弃此待分配简历吗？')) return;
+  fetch('/api/pending/dismiss', {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({id: id})
+  })
+  .then(r => r.json())
+  .then(data => { if (data.ok) loadPending(); else alert('操作失败: ' + (data.error || '未知错误')); })
+  .catch(e => alert('请求失败: ' + e));
+}
+
+// ── 待分配池批量操作 ──
+let pendingSelected = {};
+
+function pendingOnSelect(cb) {
+  pendingSelected[cb.dataset.pid] = cb.checked;
+  updatePendingBatchBar();
+}
+
+function pendingToggleSelectAll() {
+  const master = document.getElementById('pending-select-all');
+  const tbody = document.getElementById('pending-tbody');
+  const checkboxes = tbody.querySelectorAll('input[type=checkbox][data-pid]');
+  checkboxes.forEach(cb => {
+    pendingSelected[cb.dataset.pid] = master.checked;
+    cb.checked = master.checked;
+  });
+  updatePendingBatchBar();
+}
+
+function updatePendingBatchBar() {
+  const selected = Object.values(pendingSelected).filter(Boolean).length;
+  document.getElementById('pending-batch-actions').style.display = selected > 0 ? 'flex' : 'none';
+}
+
+function pendingBatchAssign() {
+  const position = document.getElementById('pending-batch-position').value;
+  if (!position) { alert('请选择岗位'); return; }
+  const ids = Object.keys(pendingSelected).filter(k => pendingSelected[k]);
+  if (ids.length === 0) { alert('请选择要分配的简历'); return; }
+
+  let done = 0;
+  const total = ids.length;
+  ids.forEach(id => {
+    fetch('/api/assign', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ id, position })
+    })
+    .then(r => r.json())
+    .then(data => {
+      done++;
+      if (done >= total) { pendingSelected = {}; loadPending(); render(); }
+    });
+  });
+}
+
+function pendingBatchDismiss() {
+  const ids = Object.keys(pendingSelected).filter(k => pendingSelected[k]);
+  if (ids.length === 0) { alert('请选择要忽略的简历'); return; }
+  if (!confirm(`确定忽略 ${ids.length} 份待分配简历吗？`)) return;
+
+  fetch('/api/pending/dismiss', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ ids })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) { pendingSelected = {}; loadPending(); }
+    else alert('操作失败: ' + (data.error || '未知错误'));
+  });
+}
+
+// ── Comparison basket ──
+function toggleSelectAll() {
+  const checked = document.getElementById('select-all').checked;
+  let filtered = getFilteredResults();
+  if (checked) {
+    const pos = filtered.length > 0 ? filtered[0].matched_position : null;
+    selectedCompare = filtered.filter(d => d.matched_position === pos).map(d => allData.indexOf(d));
+  } else {
+    selectedCompare = [];
+  }
+  updateCompareBar(); saveCompareBasket(); render();
+}
+
+function toggleCompare(realIdx) {
+  const idx = selectedCompare.indexOf(realIdx);
+  if (idx >= 0) { selectedCompare.splice(idx, 1); }
+  else {
+    if (selectedCompare.length >= 3) { alert('最多选择3名候选人进行对比'); return; }
+    const d = allData[realIdx];
+    if (selectedCompare.length > 0) {
+      const firstPos = allData[selectedCompare[0]].matched_position;
+      if (d.matched_position !== firstPos) { alert('只能对比同一岗位的候选人'); return; }
+    }
+    selectedCompare.push(realIdx);
+  }
+  document.getElementById('select-all').checked = false;
+  updateCompareBar(); saveCompareBasket(); render();
+}
+
+function updateCompareBar() {
+  const bar = document.getElementById('compare-bar');
+  const count = document.getElementById('compare-count');
+  if (selectedCompare.length >= 2) {
+    bar.style.display = 'flex';
+    count.textContent = '已选 ' + selectedCompare.length + ' 人';
+  } else { bar.style.display = 'none'; }
+  updateBatchActions();
+}
+
+function saveCompareBasket() {
+  try { localStorage.setItem('compare_basket', JSON.stringify(selectedCompare)); } catch(e) {}
+}
+function loadCompareBasket() {
+  try {
+    const saved = localStorage.getItem('compare_basket');
+    if (saved) selectedCompare = JSON.parse(saved);
+  } catch(e) {}
+}
+
+function clearCompare() {
+  selectedCompare = [];
+  document.getElementById('select-all').checked = false;
+  updateCompareBar(); saveCompareBasket(); render();
+}
+
+function doCompare() {
+  if (selectedCompare.length < 2) return;
+  const candidates = selectedCompare.map(i => allData[i]).filter(Boolean);
+  if (candidates.length < 2) return;
+  const modal = document.getElementById('compare-modal');
+  const content = document.getElementById('compare-content');
+
+  // Dynamic dimension keys
+  const allDimKeys = new Set();
+  candidates.forEach(c => {
+    Object.keys(c.dimensions || {}).forEach(k => allDimKeys.add(k));
+  });
+  const dimKeys = Array.from(allDimKeys);
+
+  const dimLabels = { skill_match:'技能匹配', experience_match:'经验匹配', education_match:'学历匹配', overall:'综合评价' };
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+  html += '<tr style="background:#fafafa;"><th style="padding:10px;border:1px solid #eee;text-align:left;">对比维度</th>';
+  candidates.forEach(c => {
+    html += '<th style="padding:10px;border:1px solid #eee;text-align:center;">' + esc(c.candidate_name) + '<br><span style="font-size:11px;color:#888;">' + esc(c.matched_position) + '</span></th>';
+  });
+  html += '</tr>';
+
+  // Score
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">综合匹配度</td>';
+  candidates.forEach(c => {
+    const cls = c.match_score >= 80 ? '#2ecc71' : c.match_score >= 60 ? '#e67e22' : '#e74c3c';
+    html += '<td style="padding:10px;border:1px solid #eee;text-align:center;font-size:22px;font-weight:700;color:' + cls + ';">' + c.match_score + '/100</td>';
+  });
+  html += '</tr>';
+
+  // Verdict
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">评估结论</td>';
+  candidates.forEach(c => {
+    html += '<td style="padding:10px;border:1px solid #eee;text-align:center;"><span class="verdict-tag ' + (VERDICT_MAP[c.verdict]||'pend') + '">' + esc(c.verdict) + '</span></td>';
+  });
+  html += '</tr>';
+
+  // Dimensions
+  dimKeys.forEach(key => {
+    const label = dimLabels[key] || key;
+    html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">' + label + '</td>';
+    let best = 0, worst = 10;
+    candidates.forEach(c => { const s = (c.dimensions||{})[key]?.score || 0; if (s > best) best = s; if (s < worst) worst = s; });
+    candidates.forEach(c => {
+      const dim = (c.dimensions||{})[key];
+      const s = dim?.score || '-';
+      const isBest = s === best && best > 0;
+      const isWorst = s === worst && worst < best;
+      let style = '';
+      if (isBest) style = 'background:#d5f5e3;font-weight:700;';
+      else if (isWorst && candidates.length > 1) style = 'background:#fadbd8;';
+      html += '<td style="padding:10px;border:1px solid #eee;text-align:center;' + style + '"><b style="font-size:16px;">' + s + '</b>/10' + (dim?.comment ? '<br><span style="font-size:11px;color:#888;">' + esc(dim.comment.slice(0,80)) + '</span>' : '') + '</td>';
+    });
+    html += '</tr>';
+  });
+
+  // Summary
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">综合概述</td>';
+  candidates.forEach(c => { html += '<td style="padding:10px;border:1px solid #eee;font-size:12px;line-height:1.6;vertical-align:top;">' + esc(c.summary||'') + '</td>'; });
+  html += '</tr>';
+
+  // Highlights
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">🌟 亮点</td>';
+  candidates.forEach(c => { html += '<td style="padding:10px;border:1px solid #eee;font-size:12px;vertical-align:top;"><ul style="margin:0;padding-left:16px;">' + (c.highlights||[]).map(h => '<li>' + esc(h) + '</li>').join('') + '</ul></td>'; });
+  html += '</tr>';
+
+  // Risks
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">⚠️ 风险</td>';
+  candidates.forEach(c => { html += '<td style="padding:10px;border:1px solid #eee;font-size:12px;vertical-align:top;"><ul style="margin:0;padding-left:16px;">' + ((c.risks||[]).length ? c.risks.map(r => '<li>' + esc(r) + '</li>').join('') : '<li>无</li>') + '</ul></td>'; });
+  html += '</tr>';
+
+  // Interview suggestions
+  html += '<tr><td style="padding:10px;border:1px solid #eee;font-weight:600;">💡 面试建议</td>';
+  candidates.forEach(c => { html += '<td style="padding:10px;border:1px solid #eee;font-size:12px;vertical-align:top;"><ul style="margin:0;padding-left:16px;">' + ((c.interview_suggestions||[]).length ? c.interview_suggestions.map(s => '<li>' + esc(s) + '</li>').join('') : '<li>无</li>') + '</ul></td>'; });
+  html += '</tr>';
+
+  html += '</table>';
+  content.innerHTML = html;
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeCompare() {
+  document.getElementById('compare-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ── Report + Resume viewer ──
+let _reportEvalLoaded = false;
+let _reportResumeLoaded = false;
+let _reportCurrentTab = 'eval';
+
+function simpleMarkdownToHTML(md) {
+  if (!md) return '';
+  let html = md;
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Headings
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Horizontal rules
+  html = html.replace(/^---$/gm, '<hr>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Paragraphs - double newlines
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  // Clean empty paragraphs
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>\s*<(h[1-4]|ul|hr)/g, '<$1');
+  html = html.replace(/<\/(h[1-4]|ul)>\s*<\/p>/g, '</$1>');
+  return html;
+}
+
+function viewReport(reportFile, resumeFile, candidateName) {
+  const modal = document.getElementById('report-modal');
+  const loading = document.getElementById('report-modal-loading');
+  document.getElementById('report-modal-name').textContent = candidateName;
+  modal.style.display = 'block';
+  loading.style.display = 'block';
+  document.getElementById('report-eval-content').style.display = 'none';
+  document.getElementById('report-resume-content').style.display = 'none';
+  document.body.style.overflow = 'hidden';
+  _reportEvalLoaded = false;
+  _reportResumeLoaded = false;
+  _reportCurrentTab = 'eval';
+  document.getElementById('tab-eval').classList.add('active');
+  document.getElementById('tab-resume').classList.remove('active');
+
+  // Load evaluation report
+  fetch('reports/' + encodeURIComponent(reportFile))
+    .then(r => r.ok ? r.text() : Promise.reject('加载失败'))
+    .then(md => {
+      _reportEvalLoaded = true;
+      const html = simpleMarkdownToHTML(md);
+      document.getElementById('report-eval-content').innerHTML = html;
+      if (_reportCurrentTab === 'eval') {
+        loading.style.display = 'none';
+        document.getElementById('report-eval-content').style.display = 'block';
+      }
+    })
+    .catch(e => {
+      _reportEvalLoaded = true;
+      document.getElementById('report-eval-content').innerHTML = '<p style="color:#e74c3c;text-align:center;padding:40px;">报告加载失败: ' + esc(String(e)) + '</p>';
+      if (_reportCurrentTab === 'eval') {
+        loading.style.display = 'none';
+        document.getElementById('report-eval-content').style.display = 'block';
+      }
+    });
+
+  // Load resume text
+  fetch('/api/resume-text?file=' + encodeURIComponent(resumeFile))
+    .then(r => r.json())
+    .then(data => {
+      _reportResumeLoaded = true;
+      const el = document.getElementById('report-resume-content');
+      if (data.ok) {
+        el.textContent = data.text;
+      } else {
+        el.innerHTML = '<p style="color:#e74c3c;text-align:center;padding:40px;">简历加载失败: ' + esc(data.error || '未知错误') + '</p>';
+      }
+      if (_reportCurrentTab === 'resume') {
+        loading.style.display = 'none';
+        el.style.display = 'block';
+      }
+    })
+    .catch(e => {
+      _reportResumeLoaded = true;
+      document.getElementById('report-resume-content').innerHTML = '<p style="color:#e74c3c;text-align:center;padding:40px;">简历加载失败: ' + esc(String(e)) + '</p>';
+    });
+}
+
+function switchReportTab(tab) {
+  _reportCurrentTab = tab;
+  const loading = document.getElementById('report-modal-loading');
+  document.getElementById('tab-eval').classList.toggle('active', tab === 'eval');
+  document.getElementById('tab-resume').classList.toggle('active', tab === 'resume');
+  document.getElementById('report-eval-content').style.display = tab === 'eval' ? 'block' : 'none';
+  document.getElementById('report-resume-content').style.display = tab === 'resume' ? 'block' : 'none';
+
+  if (tab === 'eval' && _reportEvalLoaded) loading.style.display = 'none';
+  else if (tab === 'resume' && _reportResumeLoaded) loading.style.display = 'none';
+  else loading.style.display = 'block';
+}
+
+function closeReport() {
+  document.getElementById('report-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ── Batch operations ──
+function getCheckedIds() {
+  let filtered = getFilteredResults();
+  return filtered.filter(d => selectedCompare.includes(allData.indexOf(d))).map(d => d.id);
+}
+
+function updateBatchActions() {
+  const bar = document.getElementById('batch-actions');
+  const count = getCheckedIds().length;
+  bar.style.display = count >= 1 ? 'flex' : 'none';
+}
+
+function batchTransition(newStatus) {
+  const ids = getCheckedIds();
+  if (ids.length === 0) return;
+  const label = newStatus === '面试中' ? '批量邀请面试' : '批量淘汰';
+  if (!confirm(`确定要将 ${ids.length} 名候选人转为「${newStatus}」吗？`)) return;
+
+  let done = 0;
+  Promise.all(ids.map(id =>
+    fetch('/api/transition', {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ id: id, status: newStatus })
+    }).then(r => r.json()).then(d => { if (d.ok) done++; })
+  )).then(() => {
+    selectedCompare = []; document.getElementById('select-all').checked = false;
+    updateCompareBar(); updateBatchActions(); saveCompareBasket(); render();
+  });
+}
+
+function batchDelete() {
+  const ids = getCheckedIds();
+  if (ids.length === 0) return;
+  if (!confirm(`确定要删除 ${ids.length} 名候选人吗？可在「最近删除」中恢复。`)) return;
+
+  fetch('/api/delete', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ ids: ids })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      showUndoToast(data.deleted_ids || ids, `${ids.length} 名候选人`);
+      selectedCompare = []; document.getElementById('select-all').checked = false;
+      updateCompareBar(); updateBatchActions(); saveCompareBasket();
+      expandedIdx = null; render();
+    } else { alert('删除失败: ' + (data.error || '未知错误')); }
+  });
+}
+
+// ── Delete ──
+function deleteCandidate(filteredIdx) {
+  let filtered = getFilteredResults();
+  const target = filtered[filteredIdx];
+  if (!target) return;
+  const realIdx = allData.indexOf(target);
+  if (realIdx < 0) return;
+
+  if (!confirm(`确定要删除「${target.candidate_name}」（${target.matched_position}，${target.match_score}分）吗？`)) return;
+
+  fetch('/api/delete', {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({indices: [realIdx]})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      showUndoToast(data.deleted_ids || [realIdx], target.candidate_name);
+      expandedIdx = null;
+      render();
+    } else { alert('删除失败: ' + (data.error || '未知错误')); }
+  })
+  .catch(e => alert('请求失败: ' + e));
+}
+
+// ── Promote to reference ──
+function promoteToReference(realIdx) {
+  const candidate = allData[realIdx];
+  if (!candidate || !candidate.id) return;
+  if (!confirm(`确定将「${candidate.candidate_name}」推荐为「${candidate.matched_position}」标杆简历吗？\n\n提交后将由管理员审批。`)) return;
+  fetch('/api/promote-to-reference', {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ id: candidate.id })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) alert('已提交标杆审批');
+    else alert('提交失败: ' + (data.error || '未知错误'));
+  });
+}
+
+// UPGRADE-P2+: 提取特征并显示雷达图
+function extractFeatures(realIdx) {
+  const candidate = allData[realIdx];
+  if (!candidate || !candidate.id) return;
+  const btn = event.target;
+  btn.textContent = '⏳';
+  btn.disabled = true;
+
+  fetch('/api/references/extract-features', {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ id: candidate.id })
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.textContent = '🏷️特征';
+    btn.disabled = false;
+    if (data.ok) {
+      // Fetch reference features for this position for comparison
+      return fetch(`/api/references/features?position=${encodeURIComponent(data.position)}`).then(r => r.json());
+    } else {
+      alert('提取失败: ' + (data.error || '未知错误'));
+      throw new Error('extract failed');
+    }
+  })
+  .then(refData => {
+    if (!refData || !refData.ok) return;
+    const refFeatures = refData.features || [];
+    if (refFeatures.length === 0) {
+      document.getElementById(`radar-container-${realIdx}`).innerHTML =
+        '<p style="font-size:12px;color:#888;text-align:center;">暂无标杆特征数据</p>';
+      return;
+    }
+    // If there are multiple references, pick the first one for radar
+    const ref = refFeatures[0];
+    const dims = ref.features || {};
+    showRadarChart(realIdx, dims);
+  })
+  .catch(e => { btn.textContent = '🏷️特征'; btn.disabled = false; });
+}
+
+function showRadarChart(realIdx, refFeatures) {
+  // 缓存特征数据，render 重绘后可恢复
+  const candidate = allData[realIdx];
+  if (candidate && candidate.id) {
+    radarCache[candidate.id] = { idx: realIdx, features: refFeatures };
+  }
+  _drawRadarChart(realIdx, refFeatures);
+}
+
+function _drawRadarChart(realIdx, refFeatures) {
+  const container = document.getElementById(`radar-container-${realIdx}`);
+  if (!container) return;
+  container.innerHTML = '<canvas id="radar-canvas-' + realIdx + '" style="max-height:300px;"></canvas>';
+
+  const ctx = document.getElementById('radar-canvas-' + realIdx).getContext('2d');
+  const labels = ['技术栈', '行业', '关键能力', '经验', '学历'];
+  // Reference is normalized as 100, candidate will be compared
+  const refData = [1, 1, 1, 1, 1]; // reference baseline
+
+  // Compute candidate similarity (simplified - just show reference feature counts as radar)
+  const techCount = (refFeatures.tech_stack || []).length;
+  const industryCount = (refFeatures.industry || []).length;
+  const skillCount = (refFeatures.skills || []).length;
+  const years = Math.min((refFeatures.years || 0) / 10, 1);
+  const eduLevel = refFeatures.education ? 1 : 0.5;
+
+  new Chart(ctx, {
+    type: 'radar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '标杆特征',
+        data: [techCount, industryCount, skillCount, years * 5, eduLevel * 5],
+        backgroundColor: 'rgba(74,144,217,.2)',
+        borderColor: '#4a90d9',
+        pointBackgroundColor: '#4a90d9',
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { r: { beginAtZero: true, max: Math.max(techCount, industryCount, skillCount, 5) + 1 } },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+// ── AI Rank ──
+function rankCandidates() {
+  const pos = document.getElementById('export-position').value;
+  if (!confirm('将使用AI对' + (pos === 'all' ? '全部岗位' : pos) + '的候选人进行智能排序，继续？')) return;
+  fetch('/api/rank', {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ position: pos === 'all' ? '' : pos })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) { alert('AI排序完成，已更新候选人优先级'); render(); }
+    else { alert('排序失败: ' + (data.error || '未知错误')); }
+  })
+  .catch(e => alert('请求失败: ' + e));
+}
+
+// ── 统一筛选逻辑，render / delete / batch 共用 ──
+function getFilteredResults() {
+  let filtered = allData;
+  if (currentFilter === 'all') {
+    // v5: 「全部」即为全部，不做过滤
+  } else if (currentFilter === 'recommended') {
+    // v5: 新增「推荐候选人」筛选（原「全部」行为）
+    filtered = filtered.filter(d => d.verdict !== '不推荐' && d.verdict !== '待定');
+  } else {
+    const key = {star:'强烈推荐', rec:'推荐', pend:'待定', rej:'不推荐'}[currentFilter];
+    filtered = filtered.filter(d => d.verdict === key);
+  }
+  const posFilter = document.getElementById('filter-position').value;
+  if (posFilter && posFilter !== 'all') {
+    filtered = filtered.filter(d => d.matched_position === posFilter);
+  }
+  const searchText = document.getElementById('filter-search').value.trim().toLowerCase();
+  if (searchText) {
+    filtered = filtered.filter(d => (d.candidate_name||'').toLowerCase().includes(searchText));
+  }
+  const dateFrom = document.getElementById('filter-date-from').value;
+  const dateTo = document.getElementById('filter-date-to').value;
+  if (dateFrom) {
+    filtered = filtered.filter(d => (d.timestamp||'').slice(0,10) >= dateFrom);
+  }
+  if (dateTo) {
+    filtered = filtered.filter(d => (d.timestamp||'').slice(0,10) <= dateTo);
+  }
+  return filtered;
+}
+
+// ── Render ──
+function render() {
+  // v3: 同时拉取列表 + 全量统计，支持「含已清理」切换
+  const showDeleted = document.getElementById('show-deleted')?.checked ? '1' : '0';
+  const statusFilter = showDeleted === '1' ? '' : '?status=待筛选,面试中';
+  Promise.all([
+    fetch(`/api/results${statusFilter}${statusFilter?'&': '?'}include_deleted=${showDeleted}&t=` + Date.now())
+      .then(r => r.ok ? r.json() : []).catch(() => []),
+    fetch('/api/health?t=' + Date.now()).then(r => r.json()).catch(() => null)
+  ])
+  .then(([data, health]) => {
+      allData = data;
+      let filtered = getFilteredResults();
+
+      // v3: Stats 从数据库全量统计获取（避免幸存者偏差）
+      if (health && health.stats) {
+        const s = health.stats;
+        const v = s.verdicts || {};
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card"><div class="num">${s.total}</div><div class="label">总评估数${s.deleted ? ' (含'+s.deleted+'已清理)' : ''}</div></div>
+          <div class="stat-card star"><div class="num">${v['强烈推荐'] || 0}</div><div class="label">⭐ 强烈推荐</div></div>
+          <div class="stat-card rec"><div class="num">${v['推荐'] || 0}</div><div class="label">✅ 推荐</div></div>
+          <div class="stat-card pend"><div class="num">${v['待定'] || 0}</div><div class="label">⚠️ 待定</div></div>
+          <div class="stat-card rej"><div class="num">${v['不推荐'] || 0}</div><div class="label">❌ 不推荐</div></div>
+        `;
+      } else {
+        // fallback
+        const counts = {total: data.length, star: 0, rec: 0, pend: 0, rej: 0};
+        data.forEach(d => { const k = VERDICT_MAP[d.verdict]; if (k) counts[k]++; });
+        document.getElementById('stats').innerHTML = `
+          <div class="stat-card"><div class="num">${counts.total}</div><div class="label">活跃候选人</div></div>
+          <div class="stat-card star"><div class="num">${counts.star}</div><div class="label">⭐ 强烈推荐</div></div>
+          <div class="stat-card rec"><div class="num">${counts.rec}</div><div class="label">✅ 推荐</div></div>
+          <div class="stat-card pend"><div class="num">${counts.pend}</div><div class="label">⚠️ 待定</div></div>
+          <div class="stat-card rej"><div class="num">${counts.rej}</div><div class="label">❌ 不推荐</div></div>
+        `;
+      }
+
+      const tbody = document.getElementById('table-body');
+      const empty = document.getElementById('empty-msg');
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+      } else {
+        empty.style.display = 'none';
+        let html = '';
+        filtered.forEach((d, i) => {
+          const isExpanded = expandedIdx === i;
+          const realIdx = allData.indexOf(d);
+          const checked = selectedCompare.includes(realIdx);
+          html += `
+            <tr class="${isExpanded ? 'expanded' : ''}">
+              <td onclick="event.stopPropagation(); toggleCompare(${realIdx})"><input type="checkbox" ${checked ? 'checked' : ''} style="pointer-events:none;"></td>
+              <td onclick="toggleDetail(${i})"><strong>${esc(d.candidate_name)}</strong></td>
+              <td onclick="toggleDetail(${i})">${esc(d.matched_position)}</td>
+              <td onclick="toggleDetail(${i})"><span class="score ${scoreClass(d.match_score)}">${d.match_score}</span>/100</td>
+              <td onclick="toggleDetail(${i})"><span class="${verdictClass(d.verdict)}">${d.verdict}</span></td>
+              <td onclick="toggleDetail(${i})">${(d.timestamp||'--').slice(0,16)}</td>
+              <td><a class="report-link" href="javascript:void(0)" onclick="event.stopPropagation();viewReport('${esc(d.report_file)}', '${esc(d.resume_file)}', '${esc(d.candidate_name)}')">查看报告</a></td>
+              <td>
+                <button onclick="event.stopPropagation(); extractFeatures(${realIdx})" style="background:#9b59b6;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="提取特征标签">🏷️特征</button>
+                <button onclick="event.stopPropagation(); promoteToReference(${realIdx})" style="background:#6c5ce7;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="推荐为标杆">⭐标杆</button>
+                <button onclick="event.stopPropagation(); deleteCandidate(${i})" style="background:#e74c3c;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;" title="删除">✕</button>
+              </td>
+            </tr>`;
+
+          if (isExpanded) {
+            const dims = d.dimensions || {};
+            html += `<tr class="detail-row"><td colspan="8"><div class="detail-panel">`;
+
+            if (d.score_reasoning) {
+              html += `<div class="detail-section full">
+                <h4>📐 评分计算</h4>
+                <div class="reasoning-box">${esc(d.score_reasoning)}</div>
+              </div>`;
+            }
+
+            html += `<div class="detail-section full">
+              <h4>📝 综合概述</h4>
+              <p style="font-size:14px;line-height:1.6">${esc(d.summary)}</p>
+            </div>`;
+
+            // Dynamic dimensions
+            html += `<div class="detail-section">
+              <h4>📊 各维度评分详情</h4>`;
+            for (const [key, dim] of Object.entries(dims)) {
+              const label = dim.name || key;
+              html += `<div class="dim-item">
+                <div class="dim-header">
+                  <span class="dim-name">${esc(label)}</span>
+                  <span class="dim-score" style="color:${dim.score >= 8 ? '#2ecc71' : dim.score >= 6 ? '#e67e22' : '#e74c3c'}">${dim.score}/10</span>
+                </div>
+                <div class="dim-comment">${esc(dim.comment || '')}</div>
+              </div>`;
+            }
+            html += `</div>`;
+
+            // Highlights & risks
+            html += `<div class="detail-section">
+              <h4>🌟 亮点</h4>
+              <ul class="highlight-list">${(d.highlights||[]).map(h => `<li>${esc(h)}</li>`).join('')}</ul>
+            </div>`;
+            html += `<div class="detail-section">
+              <h4>⚠️ 风险点</h4>
+              <ul class="risk-list">${(d.risks||[]).length ? d.risks.map(r => `<li>${esc(r)}</li>`).join('') : '<li>无</li>'}</ul>
+            </div>`;
+
+            if (d.interview_suggestions && d.interview_suggestions.length) {
+              html += `<div class="detail-section full">
+                <h4>💡 面试建议</h4>
+                <ul class="suggest-list">${d.interview_suggestions.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+              </div>`;
+            }
+
+            // UPGRADE-P2+: 标杆相似度雷达图
+            html += `<div class="detail-section full" id="radar-section-${realIdx}">
+              <h4>🎯 标杆相似度</h4>
+              <div id="radar-container-${realIdx}" style="max-width:400px;margin:0 auto;">
+                <p style="font-size:12px;color:#aaa;text-align:center;">点击「🏷️特征」按钮提取特征后可查看</p>
+              </div>
+            </div>`;
+
+            html += `</div></td></tr>`;
+          }
+        });
+
+        tbody.innerHTML = html;
+
+        // 恢复标杆相似度雷达图（可能在render重绘时被销毁）
+        if (expandedIdx !== null && expandedIdx < allData.length) {
+          const cid = allData[expandedIdx].id;
+          if (cid && radarCache[cid]) {
+            setTimeout(() => _drawRadarChart(expandedIdx, radarCache[cid].features), 100);
+          }
+        }
+      }
+
+      document.getElementById('update-time').textContent = new Date().toLocaleTimeString('zh-CN');
+      updateCompareBar();
+    });
+}
+
+// UPGRADE-P3+: 重复检测队列
+let dupData = [];
+let dupSelected = {};
+
+function loadDuplicates() {
+  fetch('/api/duplicates', { headers: authHeaders() })
+    .then(r => r.json()).then(d => {
+      dupData = d.items || [];
+      renderDuplicates();
+    }).catch(() => {});
+}
+
+function renderDuplicates() {
+  const pool = document.getElementById('dup-pool');
+  const tbody = document.getElementById('dup-tbody');
+  const empty = document.getElementById('dup-empty');
+  const count = document.getElementById('dup-count');
+  const pending = dupData.filter(d => d.status === 'pending_review');
+
+  if (pending.length === 0) {
+    pool.style.display = 'none';
+    return;
+  }
+
+  pool.style.display = 'block';
+  count.textContent = '(' + pending.length + ' 份待处理)';
+  empty.style.display = pending.length === 0 ? 'block' : 'none';
+
+  let html = '';
+  pending.forEach(d => {
+    const sel = dupSelected[d.fhash] ? 'checked' : '';
+    html += '<tr>' +
+      '<td><input type="checkbox" ' + sel + ' data-fhash="' + d.fhash + '" onchange="dupOnSelect(this)"></td>' +
+      '<td style="font-size:13px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (d.resume_file || '') + '">' + (d.resume_file || '-') + '</td>' +
+      '<td>' + (d.original_candidate_name || '-') + '</td>' +
+      '<td>' + (d.original_position || '-') + '</td>' +
+      '<td><span class="score ' + (d.original_score >= 75 ? 'high' : d.original_score >= 55 ? 'mid' : 'low') + '">' + (d.original_score || 0) + '</span></td>' +
+      '<td><span class="verdict-tag ' + verdictClass(d.original_verdict) + '">' + (d.original_verdict || '-') + '</span></td>' +
+      '<td style="font-size:12px;color:#888;">' + (d.timestamp || '').slice(11, 16) + '</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button onclick="dupReevaluate(\'' + d.fhash + '\')" style="background:#2ecc71;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:4px;">🔄</button>' +
+        '<button onclick="dupIgnore(\'' + d.fhash + '\')" style="background:#95a5a6;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>' +
+      '</td></tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function verdictClass(v) {
+  if (v === '强烈推荐') return 'star';
+  if (v === '推荐') return 'rec';
+  if (v === '待定') return 'pend';
+  if (v === '不推荐') return 'rej';
+  return '';
+}
+
+function dupOnSelect(cb) {
+  const fhash = cb.dataset.fhash;
+  dupSelected[fhash] = cb.checked;
+}
+
+function dupToggleSelectAll() {
+  const master = document.getElementById('dup-select-all');
+  const pending = dupData.filter(d => d.status === 'pending_review');
+  pending.forEach(d => { dupSelected[d.fhash] = master.checked; });
+  renderDuplicates();
+}
+
+function dupReevaluate(fhash) {
+  fetch('/api/duplicates/reevaluate', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ fhashes: [fhash] })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { loadDuplicates(); render(); loadPending(); }
+  });
+}
+
+function dupIgnore(fhash) {
+  fetch('/api/duplicates/ignore', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ fhashes: [fhash] })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) loadDuplicates();
+  });
+}
+
+function dupBatchReevaluate() {
+  const selected = Object.keys(dupSelected).filter(k => dupSelected[k]);
+  if (selected.length === 0) { alert('请先选择要重新评估的简历'); return; }
+  fetch('/api/duplicates/reevaluate', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ fhashes: selected })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { dupSelected = {}; loadDuplicates(); render(); loadPending(); }
+  });
+}
+
+function dupBatchIgnore() {
+  const selected = Object.keys(dupSelected).filter(k => dupSelected[k]);
+  if (selected.length === 0) { alert('请先选择要忽略的简历'); return; }
+  fetch('/api/duplicates/ignore', {
+    method: 'POST', headers: authHeaders(),
+    body: JSON.stringify({ fhashes: selected })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { dupSelected = {}; loadDuplicates(); }
+  });
+}
+
+// UPGRADE-P1+: SSE 实时事件连接 + 降级轮询
+let sseConnected = false;
+let sseConn = null;
+let pollTimer = null;
+let pendingTimer = null;
+const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
+
+function connectSSE() {
+  if (sseConn) { sseConn.close(); }
+  sseConn = new EventSource(SSE_URL);
+
+  sseConn.addEventListener('eval_complete', function(e) {
+    sseConnected = true;
+    try {
+      const d = JSON.parse(e.data);
+      // 增量更新：在数据列表前插入新记录
+      const exists = allData.some(r => r.id === d.id);
+      if (!exists) {
+        // 增量获取完整数据以保持排序一致
+        render();
+        loadPending();
+      }
+    } catch(ex) {}
+  });
+
+  sseConn.addEventListener('status_change', function(e) {
+    sseConnected = true;
+    try {
+      const d = JSON.parse(e.data);
+      // 直接更新 DOM 中的 pipeline 状态标签（如果在当前视图中）
+      const item = allData.find(r => r.id === d.id);
+      if (item) {
+        item.pipeline_status = d.to;
+        render();
+      }
+    } catch(ex) {}
+  });
+
+  sseConn.addEventListener('pending_update', function(e) {
+    sseConnected = true;
+    loadPending();
+  });
+
+  sseConn.addEventListener('dup_update', function(e) {
+    sseConnected = true;
+    loadDuplicates();
+  });
+
+  sseConn.addEventListener('heartbeat', function(e) {
+    sseConnected = true;
+  });
+
+  sseConn.onopen = function() {
+    sseConnected = true;
+    if (pollTimer) clearInterval(pollTimer);
+    if (pendingTimer) clearInterval(pendingTimer);
+    pollTimer = setInterval(render, 15000);
+    pendingTimer = setInterval(() => { loadPending(); loadDuplicates(); }, 30000);
+  };
+
+  sseConn.onerror = function() {
+    sseConnected = false;
+    sseConn.close();
+    if (pollTimer) clearInterval(pollTimer);
+    if (pendingTimer) clearInterval(pendingTimer);
+    pollTimer = setInterval(render, 5000);
+    pendingTimer = setInterval(() => { loadPending(); loadDuplicates(); }, 8000);
+    // 30s 后重试 SSE
+    setTimeout(connectSSE, 30000);
+  };
+}
+
+// Init
+loadCompareBasket();
+loadPositions();
+render();
+loadPending();
+loadDuplicates();
+connectSSE();
+</script>
+</body>
+</html>

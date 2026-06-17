@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Test Pending API</title></head>
+<body>
+<h1>Pending API Test</h1>
+<div id="result"></div>
+<script>
+fetch('/api/pending')
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+  })
+  .catch(e => {
+    document.getElementById('result').textContent = 'Error: ' + e.message;
+  });
+</script>
+</body></html>

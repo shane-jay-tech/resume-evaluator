@@ -13,5 +13,4 @@ references/
 *.json
 *.spec.bak
 .DS_Store
-# Demo 前端页面（独立项目）
-*.html
+# Demo 页面在另一个项目，这里不跟踪

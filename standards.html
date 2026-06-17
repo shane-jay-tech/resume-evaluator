@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>评估标准 - 招聘系统</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; padding: 20px; }
+.header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 2px solid #e8e8e8; margin-bottom: 20px; }
+.header h1 { font-size: 22px; }
+.header .nav { display: flex; gap: 8px; }
+.header a { text-decoration: none; padding: 8px 16px; border-radius: 6px; color: #fff; font-size: 14px; background: #4a90d9; }
+.btn { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; color: #fff; }
+.btn-primary { background: #4a90d9; }
+.btn-warning { background: #e67e22; }
+.btn-danger { background: #e74c3c; }
+.btn-success { background: #2ecc71; }
+.btn-purple { background: #9b59b6; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.container { display: flex; gap: 20px; height: calc(100vh - 160px); }
+
+/* 左侧岗位列表 */
+.sidebar { width: 260px; min-width: 260px; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-y: auto; }
+.sidebar .pos-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; transition: background .15s; }
+.sidebar .pos-item:hover { background: #f5f8fc; }
+.sidebar .pos-item.active { background: #4a90d9; color: #fff; font-weight: 600; }
+.sidebar .pos-item.disabled { opacity: 0.5; }
+.sidebar .pos-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Toggle switch */
+.toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-left: 8px; }
+.toggle input { display: none; }
+.toggle .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 10px; cursor: pointer; transition: .2s; }
+.toggle .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: .2s; }
+.toggle input:checked + .slider { background: #2ecc71; }
+.toggle input:checked + .slider:before { transform: translateX(16px); }
+
+/* 右侧详情 */
+.detail { flex: 1; overflow-y: auto; background: #fff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 24px; position: relative; }
+.detail h2 { font-size: 20px; margin-bottom: 6px; }
+.detail .aliases { color: #888; font-size: 13px; margin-bottom: 16px; }
+.detail .toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+
+.section { margin-bottom: 24px; }
+.section h3 { font-size: 15px; color: #4a90d9; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #e8f0fa; }
+
+/* 维度权重条 */
+.dim-item { display: flex; align-items: center; margin-bottom: 8px; }
+.dim-item .dim-name { width: 160px; font-size: 14px; }
+.dim-item .dim-bar-wrap { flex: 1; height: 20px; background: #e8e8e8; border-radius: 10px; overflow: hidden; }
+.dim-item .dim-bar { height: 100%; background: linear-gradient(90deg, #4a90d9, #357abd); border-radius: 10px; transition: width .3s; }
+.dim-item .dim-pct { width: 50px; text-align: right; font-size: 13px; font-weight: 600; color: #4a90d9; margin-left: 10px; }
+
+/* 要求列表 */
+.req-list { list-style: none; }
+.req-list li { padding: 6px 0; font-size: 14px; line-height: 1.6; border-bottom: 1px solid #f8f8f8; display: flex; align-items: flex-start; }
+.req-list li:last-child { border-bottom: none; }
+.req-list .idx { display: inline-block; width: 22px; height: 22px; line-height: 22px; text-align: center; color: #fff; border-radius: 4px; font-size: 12px; margin-right: 8px; flex-shrink: 0; margin-top: 1px; }
+.req-list.must .idx { background: #e74c3c; }
+.req-list.nice .idx { background: #2ecc71; }
+.req-list li .txt { flex: 1; }
+
+/* 编辑模式 */
+.editable { border: 1px dashed transparent; padding: 2px 4px; border-radius: 3px; min-width: 40px; }
+.edit-mode .editable { border-color: #bbb; background: #fafafa; cursor: text; }
+.edit-mode .editable:focus { border-color: #4a90d9; background: #fff; outline: none; }
+.edit-area { width: 100%; border: 1px solid #bbb; border-radius: 4px; padding: 8px; font: inherit; font-size: 13px; resize: vertical; min-height: 60px; display: none; }
+.edit-mode .edit-area { display: block; }
+.edit-mode .editable-view { display: none; }
+
+/* 评分标准 */
+.scoring-block { background: #f8fafc; border-radius: 6px; padding: 14px; margin-bottom: 10px; border-left: 3px solid #4a90d9; }
+.scoring-block h4 { font-size: 14px; color: #333; margin-bottom: 4px; }
+.scoring-block p { font-size: 13px; color: #666; line-height: 1.6; }
+
+.info-row { display: flex; align-items: center; margin-bottom: 8px; }
+.info-row .label { width: 80px; font-size: 13px; color: #888; flex-shrink: 0; }
+.info-row .value { font-size: 14px; flex: 1; }
+
+/* 其他要求 */
+.other-box { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 14px; font-size: 13px; line-height: 1.7; color: #6d4c00; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: #aaa; }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+/* LLM 面板 */
+.llm-panel { border-top: 2px solid #e8e8e8; padding-top: 16px; margin-top: 8px; }
+.llm-panel h3 { font-size: 15px; color: #9b59b6; margin-bottom: 10px; cursor: pointer; user-select: none; }
+.llm-panel .llm-body { display: none; }
+.llm-panel.open .llm-body { display: block; }
+.llm-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.llm-input-row input { flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.llm-result { background: #f5f0fa; border: 1px solid #d5c4e0; border-radius: 6px; padding: 12px; margin-bottom: 10px; max-height: 300px; overflow-y: auto; display: none; }
+.llm-result .changes { font-weight: 600; color: #9b59b6; margin-bottom: 8px; }
+.llm-result .diff-block { margin-bottom: 8px; }
+.llm-result .diff-block .field { font-size: 12px; color: #888; margin-bottom: 2px; }
+.llm-result .diff-block .val { font-size: 13px; white-space: pre-wrap; }
+.llm-loading { color: #9b59b6; font-size: 13px; display: none; }
+
+.toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 9999; opacity: 0; transition: opacity .3s; }
+.toast.show { opacity: 1; }
+.toast.ok { background: #2ecc71; }
+.toast.err { background: #e74c3c; }
+.toast.info { background: #5b6abf; }
+/* v5: 维度权重编辑 */
+.dim-slider { display: none; }
+.edit-mode .dim-slider { display: inline-block; }
+.dim-input { display: none; }
+.edit-mode .dim-input { display: inline-block; }
+.edit-mode .dim-pct { font-weight:700; }
+/* v5: 删除按钮 */
+.btn-delete { display: none; }
+.edit-mode .btn-delete { display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📐 评估标准</h1>
+  <div class="nav">
+    <a href="dashboard.html">📊 评估面板</a>
+  </div>
+</div>
+
+<div class="container">
+  <div class="sidebar" id="sidebar"></div>
+  <div class="detail" id="detail">
+    <div class="empty-state">
+      <div class="icon">📐</div>
+      <p>选择左侧岗位查看评估标准</p>
+    </div>
+    <!-- LLM Chat Panel -->
+    <div class="llm-panel" id="llmPanel">
+      <h3 onclick="toggleLLM()">🤖 AI 辅助修改 ▾</h3>
+      <div class="llm-body">
+        <div class="llm-input-row">
+          <input id="llmInstruction" placeholder="描述你想要的修改，例如：把学历改成大专，降低休闲关卡的要求权重…" onkeydown="if(event.key==='Enter')callLLM()">
+          <button class="btn btn-purple" onclick="callLLM()">发送</button>
+        </div>
+        <div class="llm-loading" id="llmLoading">⏳ AI 正在分析修改建议…</div>
+        <div class="llm-result" id="llmResult">
+          <div class="changes" id="llmChanges"></div>
+          <div id="llmDiff"></div>
+          <div style="margin-top:10px;display:flex;gap:8px;">
+            <button class="btn btn-success" onclick="applyLLM()">✅ 应用修改</button>
+            <button class="btn" style="background:#888;" onclick="dismissLLM()">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let allConfigs = [];
+let activeIdx = 0;
+let editing = false;
+let llmProposal = null;
+
+function authHeaders() {
+  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+}
+
+fetch('/api/position-config')
+  .then(r => r.json())
+  .then(data => {
+    allConfigs = data;
+    renderSidebar();
+    if (allConfigs.length) selectPos(0);
+  })
+  .catch(() => {
+    document.getElementById('sidebar').innerHTML = '<div style="padding:20px;color:#e74c3c;">加载失败</div>';
+  });
+
+function renderSidebar() {
+  const sb = document.getElementById('sidebar');
+  // 关停的岗位排到最后
+  const sorted = allConfigs.map((c, i) => ({...c, _origIdx: i}));
+  sorted.sort((a, b) => {
+    if (a.enabled === false && b.enabled !== false) return 1;
+    if (a.enabled !== false && b.enabled === false) return -1;
+    return 0;
+  });
+  sb.innerHTML = sorted.map((c) => {
+    const i = c._origIdx;
+    return `<div class="pos-item${i === activeIdx ? ' active' : ''}${c.enabled === false ? ' disabled' : ''}">
+      <span class="name" onclick="selectPos(${i})">${esc(c.name)}</span>
+      <label class="toggle" onclick="event.stopPropagation()">
+        <input type="checkbox" ${c.enabled !== false ? 'checked' : ''} onchange="togglePos(${i}, this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>`;
+  }).join('');
+}
+
+function togglePos(idx, enabled) {
+  const cfg = allConfigs[idx];
+  fetch('/api/position-config/toggle', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ position_name: cfg.name, enabled: enabled })
+  }).then(r => r.json()).then(res => {
+    if (res.ok) {
+      cfg.enabled = enabled;
+      allConfigs[idx] = cfg;
+      renderSidebar();
+      toast(enabled ? '✅ 已启用' : '⛔ 已关停', 'ok');
+    } else {
+      toast('操作失败: ' + (res.error || ''), 'err');
+      renderSidebar();
+    }
+  }).catch(e => {
+    toast('网络错误', 'err');
+    renderSidebar();
+  });
+}
+
+function selectPos(idx) {
+  editing = false;
+  activeIdx = idx;
+  renderSidebar();
+  renderDetail(allConfigs[idx]);
+}
+
+function toggleEdit() {
+  editing = !editing;
+  document.getElementById('detail').classList.toggle('edit-mode', editing);
+  const saveBtn = document.getElementById('btnSave');
+  if (saveBtn) saveBtn.style.display = editing ? 'inline-block' : 'none';
+  const editBtn = document.getElementById('btnEdit');
+  if (editBtn) editBtn.textContent = editing ? '👁 预览' : '✏️ 编辑';
+  if (editing) renderDetail(allConfigs[activeIdx]);
+}
+
+// v5: 维度权重临时存储
+let _dimWeights = null;
+
+function updateDimWeight(idx, val) {
+  if (!_dimWeights) _dimWeights = JSON.parse(JSON.stringify(allConfigs[activeIdx].dimensions || []));
+  if (idx >= 0 && idx < _dimWeights.length) {
+    _dimWeights[idx].weight = parseInt(val) / 100;
+  }
+}
+
+function deleteItem(field, idx) {
+  const el = document.querySelectorAll(`[data-field="${field}"]`)[idx];
+  if (el) {
+    el.value = '';  // 清空 = 标记删除
+    el.style.display = 'none';
+    toast('已标记删除，保存后生效', 'info');
+  }
+}
+
+function saveEdits() {
+  const cfg = allConfigs[activeIdx];
+  const posName = cfg.name;
+  const updates = {};
+
+  // must_have
+  const mustEls = document.querySelectorAll('[data-field="must_have"]');
+  updates.must_have = Array.from(mustEls).map(el => el.value || el.textContent).filter(t => t.trim());
+
+  // nice_to_have
+  const niceEls = document.querySelectorAll('[data-field="nice_to_have"]');
+  updates.nice_to_have = Array.from(niceEls).map(el => el.value || el.textContent).filter(t => t.trim());
+
+  // education, experience
+  updates.education = document.querySelector('[data-field="education"]')?.value || cfg.education;
+  updates.experience = document.querySelector('[data-field="experience"]')?.value || cfg.experience;
+  updates.other_requirements = document.querySelector('[data-field="other_requirements"]')?.value || cfg.other_requirements || '';
+
+  // scoring
+  const scoring = cfg.scoring || {};
+  const newScoring = {};
+  for (const [key] of Object.entries(scoring)) {
+    const el = document.querySelector(`[data-field="scoring_${key}"]`);
+    newScoring[key] = el ? (el.value || el.textContent) : scoring[key];
+  }
+  updates.scoring = newScoring;
+
+  // v5: 维度权重
+  if (_dimWeights) {
+    updates.dimensions = _dimWeights;
+  }
+
+  const payload = {
+    position_name: posName,
+    updates: updates,
+    change_summary: '手动编辑: ' + Object.keys(updates).join(', '),
+    change_source: 'manual',
+  };
+
+  fetch('/api/position-config/save', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(res => {
+    if (res.ok) {
+      // 更新本地
+      for (const [k, v] of Object.entries(updates)) {
+        cfg[k] = v;
+      }
+      allConfigs[activeIdx] = cfg;
+      _dimWeights = null;
+      toast('✅ 已保存', 'ok');
+      // v5: 保持编辑模式，不退出
+      renderDetail(cfg);
+    } else {
+      toast('保存失败: ' + (res.error || ''), 'err');
+    }
+  }).catch(e => toast('网络错误', 'err'));
+}
+
+function renderDetail(cfg) {
+  const dims = cfg.dimensions || [];
+  const must = cfg.must_have || [];
+  const nice = cfg.nice_to_have || [];
+  const scoring = cfg.scoring || {};
+  const dimNameMap = {};
+  dims.forEach((d, i) => { dimNameMap[`dim_${i}`] = d.name; });
+
+  let html = `<h2>${esc(cfg.name)}`;
+  if (cfg.enabled === false) html += ` <span style="color:#e74c3c;font-size:14px;">⛔ 已关停</span>`;
+  html += `</h2>`;
+  if (cfg.aliases && cfg.aliases.length) {
+    html += `<div class="aliases">别名：${cfg.aliases.join('、')}</div>`;
+  }
+
+  html += `<div class="toolbar">`;
+  html += `<button id="btnEdit" class="btn btn-primary" onclick="toggleEdit()">✏️ 编辑</button>`;
+  html += `<button id="btnSave" class="btn btn-success" onclick="saveEdits()" style="display:none">💾 保存</button>`;
+  html += `</div>`;
+
+  // v5: 维度权重（可编辑）
+  html += `<div class="section"><h3>📊 维度权重</h3>`;
+  dims.forEach((d, di) => {
+    const pct = Math.round(d.weight * 100);
+    html += `<div class="dim-item">
+      <span class="dim-name">${esc(d.name)}</span>
+      <div class="dim-bar-wrap"><div class="dim-bar" style="width:${pct}%"></div></div>
+      <input type="range" min="5" max="50" value="${pct}" step="5"
+             class="dim-slider edit-area" style="width:80px;margin:0 8px;"
+             oninput="updateDimWeight(${di}, this.value)"
+             title="拖动调整权重">
+      <input type="number" min="5" max="50" value="${pct}" step="5"
+             class="dim-input edit-area" style="width:52px;text-align:center;font-size:12px;border:1px solid #ddd;border-radius:4px;"
+             onchange="updateDimWeight(${di}, this.value)"
+             title="直接输入权重">
+      <span class="dim-pct">%</span>
+    </div>`;
+  });
+  html += `<div class="edit-area" style="font-size:11px;color:#e67e22;margin-top:4px">拖动滑块或直接输入调整权重（5%-50%，总和应为100%）</div>`;
+  html += `</div>`;
+
+  // 硬性要求
+  html += `<div class="section"><h3>🔴 硬性要求</h3><ul class="req-list must">`;
+  must.forEach((m, i) => {
+    html += `<li><span class="idx">${i + 1}</span>`;
+    html += `<span class="txt"><span class="editable editable-view">${esc(m)}</span>`;
+    html += `<textarea class="edit-area" data-field="must_have">${esc(m)}</textarea></span>`;
+    html += `<button class="btn-delete edit-area" onclick="deleteItem('must_have', ${i})" title="删除此条" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;padding:0 4px;">✕</button></li>`;
+  });
+  // 编辑模式下显示一个空行用于添加
+  if (editing) {
+    html += `<li><span class="idx" style="background:#aaa;">+</span>`;
+    html += `<span class="txt"><textarea class="edit-area" data-field="must_have" style="display:block" placeholder="新增…"></textarea></span></li>`;
+  }
+  html += `</ul></div>`;
+
+  // 加分项
+  html += `<div class="section"><h3>🟢 加分项</h3><ul class="req-list nice">`;
+  nice.forEach((n, i) => {
+    html += `<li><span class="idx">${i + 1}</span>`;
+    html += `<span class="txt"><span class="editable editable-view">${esc(n)}</span>`;
+    html += `<textarea class="edit-area" data-field="nice_to_have">${esc(n)}</textarea></span>`;
+    html += `<button class="btn-delete edit-area" onclick="deleteItem('nice_to_have', ${i})" title="删除此条" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;padding:0 4px;">✕</button></li>`;
+  });
+  if (editing) {
+    html += `<li><span class="idx" style="background:#aaa;">+</span>`;
+    html += `<span class="txt"><textarea class="edit-area" data-field="nice_to_have" style="display:block" placeholder="新增…"></textarea></span></li>`;
+  }
+  html += `</ul></div>`;
+
+  // 学历/经验
+  html += `<div class="section"><h3>📋 基本要求</h3>`;
+  html += `<div class="info-row"><span class="label">学历</span>`;
+  html += `<span class="value"><span class="editable editable-view">${esc(cfg.education || '不限')}</span>`;
+  html += `<textarea class="edit-area" data-field="education">${esc(cfg.education || '')}</textarea></span></div>`;
+  html += `<div class="info-row"><span class="label">经验</span>`;
+  html += `<span class="value"><span class="editable editable-view">${esc(cfg.experience || '不限')}</span>`;
+  html += `<textarea class="edit-area" data-field="experience">${esc(cfg.experience || '')}</textarea></span></div>`;
+  html += `</div>`;
+
+  // 评分标准
+  html += `<div class="section"><h3>📝 评分标准</h3>`;
+  for (const [key, val] of Object.entries(scoring)) {
+    const label = key === 'overall' ? '综合评分' : (dimNameMap[key] || key);
+    html += `<div class="scoring-block"><h4>${esc(label)}</h4>`;
+    html += `<p class="editable editable-view">${esc(val)}</p>`;
+    html += `<textarea class="edit-area" data-field="scoring_${key}">${esc(val)}</textarea></div>`;
+  }
+  html += `</div>`;
+
+  // 其他要求
+  html += `<div class="section"><h3>⚠️ 其他要求</h3>`;
+  html += `<div class="other-box"><span class="editable editable-view">${esc(cfg.other_requirements || '无')}</span>`;
+  html += `<textarea class="edit-area" data-field="other_requirements">${esc(cfg.other_requirements || '')}</textarea></div>`;
+  html += `</div>`;
+
+  // v5: 快速操作区——版本历史 + Prompt 预览
+  html += `<div class="section"><h3>🔧 工具</h3>`;
+  html += `<div style="display:flex;gap:8px;flex-wrap:wrap;">`;
+  html += `<button onclick="loadHistory('${esc(cfg.name)}')" class="btn" style="background:#5b6abf;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">📜 版本历史</button>`;
+  html += `<button onclick="loadPromptPreview('${esc(cfg.name)}')" class="btn" style="background:#2e7d32;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;">🔍 Prompt 预览</button>`;
+  html += `</div>`;
+  html += `<div id="historyPanel" style="margin-top:10px;display:none;"></div>`;
+  html += `<div id="promptPreviewPanel" style="margin-top:10px;display:none;"></div>`;
+  html += `</div>`;
+
+  const detailEl = document.getElementById('detail');
+  // Keep LLM panel
+  const llmPanel = document.getElementById('llmPanel');
+  detailEl.innerHTML = html;
+  detailEl.appendChild(llmPanel);
+  detailEl.scrollTop = 0;
+
+  if (editing) detailEl.classList.add('edit-mode');
+}
+
+// ── LLM Chat ──
+
+function toggleLLM() {
+  document.getElementById('llmPanel').classList.toggle('open');
+}
+
+function callLLM() {
+  const instruction = document.getElementById('llmInstruction').value.trim();
+  if (!instruction) return;
+  const cfg = allConfigs[activeIdx];
+
+  document.getElementById('llmLoading').style.display = 'block';
+  document.getElementById('llmResult').style.display = 'none';
+  document.getElementById('llmInstruction').disabled = true;
+
+  fetch('/api/position-config/llm-edit', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ position_name: cfg.name, instruction: instruction })
+  }).then(r => r.json()).then(res => {
+    document.getElementById('llmLoading').style.display = 'none';
+    document.getElementById('llmInstruction').disabled = false;
+    if (res.ok && res.proposal) {
+      llmProposal = res.proposal;
+      const changes = llmProposal.changes_summary || 'AI 建议的修改';
+      document.getElementById('llmChanges').textContent = '💡 ' + changes;
+
+      let diffHtml = '';
+      const updated = llmProposal.updated || {};
+      const fieldLabels = {
+        must_have: '硬性要求', nice_to_have: '加分项',
+        education: '学历', experience: '经验',
+        other_requirements: '其他要求', scoring: '评分标准'
+      };
+      for (const [key, label] of Object.entries(fieldLabels)) {
+        if (key === 'scoring') {
+          for (const [sk, sv] of Object.entries(updated.scoring || {})) {
+            const oldV = (cfg.scoring || {})[sk] || '';
+            if (sv !== oldV) {
+              diffHtml += `<div class="diff-block"><div class="field">${label} · ${sk}</div>`;
+              diffHtml += `<div class="val"><del style="color:#e74c3c;">${esc(oldV).substring(0, 120)}…</del></div>`;
+              diffHtml += `<div class="val"><ins style="color:#2ecc71;">${esc(sv).substring(0, 200)}…</ins></div></div>`;
+            }
+          }
+        } else if (updated[key] !== undefined) {
+          const oldV = Array.isArray(cfg[key]) ? cfg[key].join('\n') : (cfg[key] || '');
+          const newV = Array.isArray(updated[key]) ? updated[key].join('\n') : (updated[key] || '');
+          if (oldV !== newV) {
+            diffHtml += `<div class="diff-block"><div class="field">${label}</div>`;
+            diffHtml += `<div class="val"><ins style="color:#2ecc71;">${esc(newV).substring(0, 300)}</ins></div></div>`;
+          }
+        }
+      }
+      document.getElementById('llmDiff').innerHTML = diffHtml || '<div style="color:#888;">无实质性差异</div>';
+      document.getElementById('llmResult').style.display = 'block';
+    } else {
+      toast('AI 修改失败: ' + (res.error || ''), 'err');
+    }
+  }).catch(e => {
+    document.getElementById('llmLoading').style.display = 'none';
+    document.getElementById('llmInstruction').disabled = false;
+    toast('网络错误', 'err');
+  });
+}
+
+function applyLLM() {
+  if (!llmProposal || !llmProposal.updated) return;
+  const cfg = allConfigs[activeIdx];
+  const updates = llmProposal.updated;
+
+  fetch('/api/position-config/save', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ position_name: cfg.name, updates: updates })
+  }).then(r => r.json()).then(res => {
+    if (res.ok) {
+      for (const [k, v] of Object.entries(updates)) {
+        cfg[k] = v;
+      }
+      allConfigs[activeIdx] = cfg;
+      toast('✅ AI 修改已应用', 'ok');
+      llmProposal = null;
+      document.getElementById('llmResult').style.display = 'none';
+      document.getElementById('llmInstruction').value = '';
+      renderDetail(cfg);
+    } else {
+      toast('保存失败: ' + (res.error || ''), 'err');
+    }
+  }).catch(e => toast('网络错误', 'err'));
+}
+
+function dismissLLM() {
+  llmProposal = null;
+  document.getElementById('llmResult').style.display = 'none';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// ── v5: 版本历史 ──
+
+async function loadHistory(posName) {
+  const panel = document.getElementById('historyPanel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="padding:8px;color:#888;">加载中…</div>';
+  try {
+    const r = await fetch('/api/position-config/history?position=' + encodeURIComponent(posName));
+    const data = await r.json();
+    if (!data.ok || !data.history.length) {
+      panel.innerHTML = '<div style="padding:8px;color:#888;">暂无版本历史</div>';
+      return;
+    }
+    panel.innerHTML = `<h4 style="margin:8px 0;font-size:13px;color:#555;">📜 ${data.history.length} 个历史版本</h4>` +
+      data.history.map(h => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee;font-size:12px;">
+        <span style="color:#888;">${(h.created_at||'').substr(0,16)}</span>
+        <span style="color:#333;">${esc(h.change_summary||'')}</span>
+        <span style="color:#aaa;font-size:11px;">${esc(h.change_source)}</span>
+        <button onclick="viewVersion(${h.id})" style="margin-left:auto;background:#5b6abf;color:#fff;border:none;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;">查看</button>
+        <button onclick="restoreVersion(${h.id},'${esc(posName)}')" style="background:#e67e22;color:#fff;border:none;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;">恢复</button>
+      </div>`).join('');
+  } catch(e) {
+    panel.innerHTML = '<div style="padding:8px;color:#c0392b;">加载失败: ' + e.message + '</div>';
+  }
+}
+
+async function viewVersion(vid) {
+  const r = await fetch('/api/position-config/version?id=' + vid);
+  const data = await r.json();
+  if (data.ok && data.snapshot) {
+    const snap = data.snapshot.config_snapshot;
+    const panel = document.getElementById('historyPanel');
+    panel.innerHTML += `<div style="margin-top:10px;padding:10px;background:#f8f8f8;border-radius:6px;font-size:12px;max-height:300px;overflow:auto;">
+      <strong>版本 ${vid} 完整配置：</strong>
+      <pre style="white-space:pre-wrap;">${JSON.stringify(snap, null, 2)}</pre>
+    </div>`;
+  }
+}
+
+async function restoreVersion(vid, posName) {
+  if (!confirm('确定恢复到此版本？当前配置将先自动备份。')) return;
+  const r = await fetch('/api/position-config/restore', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ position_name: posName, history_id: vid })
+  });
+  const data = await r.json();
+  if (data.ok) {
+    toast('✅ 已恢复', 'ok');
+    location.reload();
+  } else {
+    toast('恢复失败: ' + data.error, 'error');
+  }
+}
+
+// ── v5: Prompt 预览 ──
+
+async function loadPromptPreview(posName) {
+  const panel = document.getElementById('promptPreviewPanel');
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="padding:8px;color:#888;">加载中…</div>';
+  try {
+    const r = await fetch('/api/position-config/preview-prompt?position=' + encodeURIComponent(posName));
+    const data = await r.json();
+    if (!data.ok) {
+      panel.innerHTML = '<div style="padding:8px;color:#c0392b;">' + data.error + '</div>';
+      return;
+    }
+    panel.innerHTML = `<div style="font-size:12px;color:#888;margin-bottom:8px;">总长度: ${data.total_chars} 字符</div>
+      <details><summary style="cursor:pointer;font-size:13px;color:#555;">📋 System Prompt</summary>
+        <pre style="background:#f0f0f0;padding:10px;border-radius:6px;font-size:11px;max-height:300px;overflow:auto;white-space:pre-wrap;">${esc(data.system_prompt)}</pre>
+      </details>
+      <details><summary style="cursor:pointer;font-size:13px;color:#555;margin-top:10px;">📋 User Prompt</summary>
+        <pre style="background:#f0f0f0;padding:10px;border-radius:6px;font-size:11px;max-height:400px;overflow:auto;white-space:pre-wrap;">${esc(data.user_prompt)}</pre>
+      </details>`;
+  } catch(e) {
+    panel.innerHTML = '<div style="padding:8px;color:#c0392b;">加载失败: ' + e.message + '</div>';
+  }
+}
+</script>
+</body>
+</html>

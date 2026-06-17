@@ -31,6 +31,12 @@ jobs:
             --add-data="config.yaml:." \
             --add-data="prompts:prompts" \
             --add-data="rules:rules" \
+            --add-data="dashboard.html:." \
+            --add-data="compare.html:." \
+            --add-data="pipeline.html:." \
+            --add-data="quality.html:." \
+            --add-data="standards.html:." \
+            --add-data="weekly_report.html:." \
             --hidden-import=watchdog.observers.polling \
             --exclude-module=tkinter \
             --exclude-module=numpy \
@@ -77,7 +83,7 @@ jobs:
 
       - name: 构建 Windows .exe
         run: |
-          pyinstaller --name="简历评估" --onedir --windowed --add-data="config.yaml;." --add-data="prompts;prompts" --add-data="rules;rules" --hidden-import=watchdog.observers.polling --exclude-module=tkinter --exclude-module=numpy --exclude-module=pandas --clean main.py
+          pyinstaller --name="简历评估" --onedir --windowed --add-data="config.yaml;." --add-data="prompts;prompts" --add-data="rules;rules" --add-data="dashboard.html;." --add-data="compare.html;." --add-data="pipeline.html;." --add-data="quality.html;." --add-data="standards.html;." --add-data="weekly_report.html;." --hidden-import=watchdog.observers.polling --exclude-module=tkinter --exclude-module=numpy --exclude-module=pandas --clean main.py
 
       - name: 打包发布文件
         run: |
