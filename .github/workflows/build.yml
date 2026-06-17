@@ -43,6 +43,13 @@ jobs:
           mkdir -p release/简历评估系统
           cp -R dist/简历评估.app release/简历评估系统/
           cp README_USER.md release/简历评估系统/
+          # 创建双击启动器（放到桌面就是快捷方式）
+          cat > release/简历评估系统/启动系统.command << 'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          open "$DIR/简历评估.app"
+          EOF
+          chmod +x release/简历评估系统/启动系统.command
 
       - name: 上传 macOS 版本
         uses: actions/upload-artifact@v4
@@ -74,6 +81,7 @@ jobs:
           mkdir -p release\简历评估系统
           xcopy /e /i /q dist\简历评估 release\简历评估系统\简历评估
           copy README_USER.md release\简历评估系统\
+          copy install.bat release\简历评估系统\
 
       - name: 上传 Windows 版本
         uses: actions/upload-artifact@v4
