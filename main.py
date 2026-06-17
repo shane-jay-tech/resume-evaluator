@@ -266,8 +266,13 @@ def main():
         config_path = os.path.abspath(sys.argv[1])
     else:
         config_path = get_config_path()
-    os.chdir(get_user_dir())  # 始终使用可写用户目录作为工作目录
-    project_dir = os.getcwd()  # 初始化全局 project_dir
+    # 开发模式: cwd = 项目根目录; PyInstaller: cwd = 可写用户目录
+    is_frozen = getattr(sys, 'frozen', False)
+    if is_frozen:
+        project_dir = get_user_dir()
+    else:
+        project_dir = os.path.dirname(os.path.abspath(config_path))
+    os.chdir(project_dir)
 
     # PyInstaller 打包后，HTML 页面在资源目录中，复制到用户目录供服务器访问
     if getattr(sys, 'frozen', False):
