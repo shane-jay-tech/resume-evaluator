@@ -1598,56 +1598,96 @@ _SETUP_HTML = r"""<!DOCTYPE html>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-       min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+       background: #f5f5f5; min-height: 100vh;
+       display: flex; align-items: center; justify-content: center; }
 .card { background: white; border-radius: 16px; padding: 40px;
-        max-width: 480px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
-h1 { font-size: 24px; margin-bottom: 8px; color: #333; text-align: center; }
-.sub { text-align: center; color: #888; font-size: 14px; margin-bottom: 28px; }
-label { display: block; font-weight: 600; margin: 16px 0 6px; color: #444; }
-input, select { width: 100%; padding: 12px; border: 2px solid #e0e0e0;
-                border-radius: 8px; font-size: 15px; transition: border-color .2s; }
-input:focus, select:focus { outline: none; border-color: #667eea; }
-.btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #667eea, #764ba2);
-       color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600;
-       cursor: pointer; margin-top: 24px; transition: transform .1s; }
-.btn:hover { transform: scale(1.02); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.hint { font-size: 12px; color: #999; margin-top: 4px; }
-.success { color: #2ecc71; text-align: center; margin-top: 16px; display: none; }
-.error { color: #e74c3c; text-align: center; margin-top: 16px; display: none; }
+        max-width: 500px; width: 95%; box-shadow: 0 2px 20px rgba(0,0,0,0.08); }
+h1 { font-size: 22px; margin-bottom: 4px; color: #1a1a1a; }
+.sub { color: #999; font-size: 13px; margin-bottom: 32px; }
+label { display: block; font-size: 14px; font-weight: 600; color: #333; margin: 20px 0 8px; }
+input { width: 100%; padding: 12px 14px; border: 1.5px solid #e0e0e0;
+        border-radius: 8px; font-size: 14px; transition: border .2s;
+        background: #fafafa; }
+input:focus { outline: none; border-color: #4f6ef7; background: white; }
+.link { font-size: 12px; color: #4f6ef7; text-decoration: none; float: right; margin-top: -18px; }
+.hint { font-size: 12px; color: #aaa; margin-top: 4px; }
+.row { display: flex; gap: 12px; }
+.row .btn { flex: 1; }
+.btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 14px;
+       font-weight: 600; cursor: pointer; transition: all .2s; }
+.btn-primary { background: #4f6ef7; color: white; width: 100%; margin-top: 28px; }
+.btn-primary:hover { background: #3d5ce5; }
+.btn-primary:disabled { background: #b0b0b0; cursor: not-allowed; }
+.btn-test { background: #e8ecff; color: #4f6ef7; }
+.btn-test:hover { background: #d0d8ff; }
+.btn-test:disabled { opacity: 0.5; cursor: not-allowed; }
+.test-result { font-size: 13px; margin-top: 8px; padding: 8px 12px; border-radius: 6px; display: none; }
+.test-result.success { display: block; background: #e8f5e9; color: #2e7d32; }
+.test-result.error { display: block; background: #fff3f0; color: #c62828; }
+.test-result.testing { display: block; background: #fff8e1; color: #f57f17; }
+.success-msg { color: #2ecc71; text-align: center; margin-top: 16px; display: none; }
+.error-msg { color: #e74c3c; text-align: center; margin-top: 16px; display: none; }
 </style>
 </head>
 <body>
 <div class="card">
-<h1>🚀 简历评估系统</h1>
-<p class="sub">首次使用，请完成基本设置</p>
+<h1>简历评估系统</h1>
+<p class="sub">首次使用，请配置 API 连接</p>
 <form id="setupForm">
-  <label>🔑 API Key <span style="color:red">*</span></label>
+  <label>API密钥 <span style="color:red">*</span></label>
   <input type="password" id="apiKey" placeholder="sk-..." required>
-  <p class="hint">支持 OpenAI / DeepSeek / 中转站 等兼容 API</p>
+  <a class="link" href="https://platform.deepseek.com/api_keys" target="_blank">点击这里获取密钥</a>
 
-  <label>🌐 API 地址（可选）</label>
+  <label>API地址</label>
   <input type="text" id="baseUrl" placeholder="https://api.deepseek.com/v1">
-  <p class="hint">留空使用默认，中转站请填写完整地址</p>
 
-  <label>🤖 模型名称（可选）</label>
+  <label>模型名称</label>
   <input type="text" id="modelName" placeholder="deepseek-chat">
-  <p class="hint">例如 deepseek-chat / gpt-4o / claude-opus-4 等</p>
 
-  <label>👤 你的名字</label>
-  <input type="text" id="userName" placeholder="张三">
+  <div class="row">
+    <button type="button" class="btn btn-test" id="testBtn">检测连接</button>
+  </div>
+  <div class="test-result" id="testResult"></div>
 
-  <label>📁 简历监控目录</label>
-  <input type="text" id="watchDir" placeholder="自动检测">
-  <p class="hint">留空则使用默认下载目录。简历文件放这里自动评估。</p>
-
-  <button type="submit" class="btn" id="submitBtn">开始使用</button>
-  <p class="success" id="successMsg">✅ 设置保存成功，正在跳转...</p>
-  <p class="error" id="errorMsg"></p>
+  <button type="submit" class="btn btn-primary" id="submitBtn">开始使用</button>
+  <div class="success-msg" id="successMsg">✅ 设置完成，正在跳转...</div>
+  <div class="error-msg" id="errorMsg"></div>
 </form>
 </div>
 <script>
+// 检测连接
+document.getElementById('testBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('testBtn');
+  const result = document.getElementById('testResult');
+  btn.disabled = true; btn.textContent = '检测中...';
+  result.className = 'test-result testing';
+  result.textContent = '⏳ 正在测试 API 连接...';
+  try {
+    const resp = await fetch('/api/test-connection', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        api_key: document.getElementById('apiKey').value,
+        base_url: document.getElementById('baseUrl').value,
+        model: document.getElementById('modelName').value || 'deepseek-chat',
+      })
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      result.className = 'test-result success';
+      result.textContent = '✅ 连接成功！模型: ' + (data.model || '-') + '，延迟: ' + data.latency;
+    } else {
+      result.className = 'test-result error';
+      result.textContent = '❌ ' + (data.error || '连接失败');
+    }
+  } catch(err) {
+    result.className = 'test-result error';
+    result.textContent = '❌ 网络错误: ' + err.message;
+  }
+  btn.disabled = false; btn.textContent = '检测连接';
+});
+
+// 提交配置
 document.getElementById('setupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('submitBtn');
@@ -1661,38 +1701,60 @@ document.getElementById('setupForm').addEventListener('submit', async (e) => {
         api_key: document.getElementById('apiKey').value,
         base_url: document.getElementById('baseUrl').value,
         model_name: document.getElementById('modelName').value,
-        user_name: document.getElementById('userName').value,
-        watch_dir: document.getElementById('watchDir').value,
       })
     });
     const data = await resp.json();
     if (data.ok) {
       document.getElementById('successMsg').style.display = 'block';
-      setTimeout(() => { window.location.href = '/dashboard.html'; }, 1500);
+      setTimeout(() => { window.location.href = '/dashboard.html'; }, 1000);
     } else {
       document.getElementById('errorMsg').textContent = data.error || '保存失败';
       document.getElementById('errorMsg').style.display = 'block';
       btn.disabled = false; btn.textContent = '开始使用';
     }
   } catch(err) {
-    document.getElementById('errorMsg').textContent = '网络错误: ' + err.message;
+    document.getElementById('errorMsg').textContent = '连接失败，请确认系统正在运行';
     document.getElementById('errorMsg').style.display = 'block';
     btn.disabled = false; btn.textContent = '开始使用';
   }
 });
-// 预填默认监控目录
-(async () => {
-  try {
-    const resp = await fetch('/api/setup/defaults');
-    const data = await resp.json();
-    if (data.watch_dir) {
-      document.getElementById('watchDir').placeholder = data.watch_dir;
-    }
-  } catch(e) {}
-})();
 </script>
 </body>
 </html>"""
+
+
+def post_test_connection(handler):
+    """测试 API 连接（检测按钮）。"""
+    body = _read_body(handler)
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        _respond_json(handler, {"ok": False, "error": "JSON 格式错误"}, 400)
+        return
+
+    api_key = data.get("api_key", "").strip()
+    base_url = data.get("base_url", "").strip()
+    model = data.get("model", "deepseek-chat").strip()
+    if not api_key:
+        _respond_json(handler, {"ok": False, "error": "API Key 不能为空"}, 400)
+        return
+
+    import time
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url or "https://api.deepseek.com/v1", timeout=15.0)
+        t0 = time.time()
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=5,
+        )
+        latency = f"{time.time() - t0:.1f}s"
+        actual_model = resp.model or model
+        _respond_json(handler, {"ok": True, "model": actual_model, "latency": latency})
+    except Exception as e:
+        err_msg = str(e)[:200]
+        _respond_json(handler, {"ok": False, "error": err_msg}, 200)
 
 
 def get_setup_page(handler):
@@ -1923,6 +1985,7 @@ POST_ROUTES = {
     "/api/regression/run": post_regression_run,
     "/api/cross-validation/trigger": post_cross_validation_trigger,
     "/api/position-config/restore": post_pc_restore,
+    "/api/test-connection": post_test_connection,
     "/api/setup": post_setup,
     "/api/upload": post_upload_resume,
 }

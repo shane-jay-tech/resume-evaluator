@@ -267,8 +267,8 @@ class TestRouteTable:
 
     def test_route_count(self):
         from app_routes import GET_ROUTES, POST_ROUTES
-        assert len(GET_ROUTES) == 33  # v6: 新增 /setup, /api/setup/defaults
-        assert len(POST_ROUTES) == 28  # v6: 新增 /api/setup, /api/upload
+        assert len(GET_ROUTES) == 33  # v6  # v6: 新增 /setup, /api/setup/defaults
+        assert len(POST_ROUTES) == 29  # v6: +test-connection  # v6: 新增 /api/setup, /api/upload
 
 
 class TestSSE:
