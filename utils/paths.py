@@ -51,13 +51,20 @@ def get_resource_dir() -> str:
 def get_user_dir() -> str:
     """获取可写用户目录（数据、日志、.env 等）。
 
-    PyInstaller 打包后，可写文件放在可执行文件旁边。
-    开发模式下就是项目根目录。
+    使用 OS 标准应用数据目录，确保 .app bundle 放在 /Applications 也能写。
+    - macOS: ~/Library/Application Support/简历评估/
+    - Windows: %APPDATA%/简历评估/
+    - Linux: ~/.local/share/简历评估/
     """
-    if getattr(sys, 'frozen', False):
-        return str(Path(sys.executable).parent)
+    home = Path.home()
+    if sys.platform == "darwin":
+        base = home / "Library" / "Application Support" / "简历评估"
+    elif sys.platform == "win32":
+        base = Path(os.getenv("APPDATA", str(home / "AppData" / "Roaming"))) / "简历评估"
     else:
-        return str(Path(__file__).resolve().parent.parent)
+        base = home / ".local" / "share" / "简历评估"
+    base.mkdir(parents=True, exist_ok=True)
+    return str(base)
 
 
 def get_data_dir() -> str:

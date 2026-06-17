@@ -266,7 +266,7 @@ def main():
         config_path = os.path.abspath(sys.argv[1])
     else:
         config_path = get_config_path()
-    os.chdir(os.path.dirname(config_path) if os.path.isfile(config_path) else get_user_dir())
+    os.chdir(get_user_dir())  # 始终使用可写用户目录作为工作目录
     project_dir = os.getcwd()  # 初始化全局 project_dir
 
     # PyInstaller 打包后，HTML 页面在资源目录中，复制到用户目录供服务器访问
