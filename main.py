@@ -271,7 +271,18 @@ def main():
     pidfile = os.path.join(project_dir, ".pid")
 
     if config_path.endswith(".yaml") or config_path.endswith(".yml"):
-        config = load_yaml_config(config_path)
+        try:
+            config = load_yaml_config(config_path)
+        except FileNotFoundError:
+            # 配置缺失时使用内置最小配置（同事解压后也能跑）
+            logger.warning("配置文件未找到，使用内置默认配置")
+            config = {
+                "server": {"host": "127.0.0.1", "port": 18980, "cors_origin": "http://127.0.0.1:18980"},
+                "monitor": {"directories": ["~/Downloads"]},
+                "database": {"path": "data/recruitment.db"},
+                "logging": {"level": "INFO", "retention_days": 7, "path": "logs/app.log"},
+                "llm": {"api_key_env": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "max_tokens": 4096, "temperature": 0.3, "max_retries": 2, "timeout": 300.0},
+            }
     else:
         import json as _json
         with open(config_path, "r", encoding="utf-8") as f:

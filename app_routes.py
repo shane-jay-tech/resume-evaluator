@@ -1623,9 +1623,17 @@ input:focus, select:focus { outline: none; border-color: #667eea; }
 <h1>🚀 简历评估系统</h1>
 <p class="sub">首次使用，请完成基本设置</p>
 <form id="setupForm">
-  <label>🔑 DeepSeek API Key <span style="color:red">*</span></label>
+  <label>🔑 API Key <span style="color:red">*</span></label>
   <input type="password" id="apiKey" placeholder="sk-..." required>
-  <p class="hint">从 platform.deepseek.com 获取</p>
+  <p class="hint">从 DeepSeek 或中转站获取</p>
+
+  <label>🌐 API 地址（可选）</label>
+  <input type="text" id="baseUrl" placeholder="https://api.deepseek.com/v1">
+  <p class="hint">默认 DeepSeek 官方，中转站请填写对应地址</p>
+
+  <label>🤖 模型名称（可选）</label>
+  <input type="text" id="modelName" placeholder="deepseek-chat">
+  <p class="hint">默认 deepseek-chat，中转站可能不同</p>
 
   <label>👤 你的名字</label>
   <input type="text" id="userName" placeholder="张三">
@@ -1651,6 +1659,8 @@ document.getElementById('setupForm').addEventListener('submit', async (e) => {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         api_key: document.getElementById('apiKey').value,
+        base_url: document.getElementById('baseUrl').value,
+        model_name: document.getElementById('modelName').value,
         user_name: document.getElementById('userName').value,
         watch_dir: document.getElementById('watchDir').value,
       })
@@ -1726,6 +1736,8 @@ def post_setup(handler):
         _respond_json(handler, {"ok": False, "error": "API Key 不能为空"}, 400)
         return
 
+    base_url = data.get("base_url", "").strip()
+    model_name = data.get("model_name", "").strip()
     user_name = data.get("user_name", "").strip()
     watch_dir = data.get("watch_dir", "").strip()
 
@@ -1736,18 +1748,34 @@ def post_setup(handler):
     watch = watch_dir or get_downloads_dir()
     # 使用 SHA256 生成稳定 token（hash() 在 Python 3 中随机化）
     token_suffix = hashlib.sha256(api_key.encode()).hexdigest()[:8]
-    env_content = f"""# 简历评估系统配置
-DEEPSEEK_API_KEY={api_key}
-AUTH_TOKEN=resume_eval_{token_suffix}
-USER_NAME={user_name}
-WATCH_DIR={watch}
-"""
+    env_lines = [
+        "# 简历评估系统配置",
+        f"DEEPSEEK_API_KEY={api_key}",
+        f"AUTH_TOKEN=resume_eval_{token_suffix}",
+        f"USER_NAME={user_name}",
+        f"WATCH_DIR={watch}",
+    ]
+    if base_url:
+        env_lines.append(f"LLM_BASE_URL={base_url}")
+    if model_name:
+        env_lines.append(f"LLM_MODEL={model_name}")
+    env_content = "\n".join(env_lines) + "\n"
     with open(env_path, "w", encoding="utf-8") as f:
         f.write(env_content)
 
     # 重新加载环境变量（当前进程立即生效）
     from dotenv import load_dotenv
+    import os as _os
     load_dotenv(env_path, override=True)
+
+    # 同步更新全局 config（避免重启才能用新 key）
+    if ctx.config:
+        llm = ctx.config.setdefault("llm", {})
+        llm["api_key"] = api_key
+        if base_url:
+            llm["base_url"] = base_url
+        if model_name:
+            llm["model"] = model_name
 
     ctx.logger and ctx.logger.info("初始化设置完成 (user=%s, watch=%s)", user_name or "未填", watch)
     _respond_json(handler, {"ok": True, "message": "设置保存成功"})

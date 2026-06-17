@@ -16,7 +16,7 @@ def load_config(config_path: str = "config.yaml") -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    # .env 覆盖 LLM 密钥
+    # .env 覆盖 LLM 配置（支持中转站 API）
     _load_dotenv()
 
     llm = config.get("llm", {})
@@ -26,6 +26,17 @@ def load_config(config_path: str = "config.yaml") -> dict:
         llm["api_key"] = api_key
     else:
         logger.warning("未找到 API Key (环境变量 %s)", api_key_env)
+
+    # 中转站 API 支持：环境变量可覆盖 base_url 和 model
+    env_base_url = os.getenv("LLM_BASE_URL", "")
+    if env_base_url:
+        llm["base_url"] = env_base_url
+        logger.info("使用自定义 API 地址: %s", env_base_url.split("/")[2] if "/" in env_base_url else env_base_url)
+
+    env_model = os.getenv("LLM_MODEL", "")
+    if env_model:
+        llm["model"] = env_model
+        logger.info("使用自定义模型: %s", env_model)
 
     return config
 
