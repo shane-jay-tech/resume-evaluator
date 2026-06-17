@@ -158,22 +158,7 @@ positions:
       overall: "综合能力评估"
 
 # ═══════════════════════════════════════════════════════════
-# 任务路由规则
+# 岗位路由规则
+# 简历岗位匹配由 evaluator.py 中的文件名匹配 + LLM 匹配处理。
+# 如需添加跨岗位发现规则，在对应岗位的 routing_rules 字段配置。
 # ═══════════════════════════════════════════════════════════
-
-router:
-  rules:
-  - keywords: ["设计", "架构", "规划", "方案", "技术选型"]
-    target: "pipeline:dev_flow"
-    description: "需要架构设计 → 完整开发流程"
-  - keywords: ["写代码", "实现", "开发", "编程"]
-    target: "model:deepseek"
-    description: "纯编码任务 → DeepSeek 主力输出"
-  - keywords: ["审查", "review", "检查代码", "安全审计"]
-    target: "model:claude"
-    description: "审查任务 → Claude 深度审查"
-  - keywords: ["分析", "解释", "调研"]
-    target: "model:gpt55"
-    description: "分析理解 → GPT-5.5 深度推理"
-  default_model: "gpt55"
-  llm_fallback: true

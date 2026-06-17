@@ -166,7 +166,8 @@ def process_resume(filepath: str, store, config: dict, references: dict,
 
         # v5: 复制简历到永久存储目录（防止 ~/Downloads 清理后文件丢失）
         try:
-            perm_dir = os.path.join(os.getcwd(), "data", "resumes")
+            from utils.paths import get_resumes_dir
+            perm_dir = get_resumes_dir()
             os.makedirs(perm_dir, exist_ok=True)
             import shutil
             perm_path = os.path.join(perm_dir, fname)
@@ -371,9 +372,14 @@ def generate_pdf(results: list, position: str, config: dict) -> bytes:
     # 从配置读取字体路径
     font_config = config.get("server", {}).get("pdf_fonts", [])
     FONT_CANDIDATES = font_config if font_config else [
+        # macOS
         "/Library/Fonts/Arial Unicode.ttf",
         "/System/Library/Fonts/STHeiti Medium.ttc",
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        # Windows
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/simsun.ttc",
+        "C:/Windows/Fonts/msgothic.ttc",
     ]
     font_path = None
     for fp in FONT_CANDIDATES:

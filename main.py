@@ -185,10 +185,19 @@ def start_dashboard_server() -> ThreadingHTTPServer:
     port = config.get("server", {}).get("port", 18980)
     cors_origin = config.get("server", {}).get("cors_origin", "http://127.0.0.1:18980")
     APIHandler.cors_origin = cors_origin  # 注入到类级别，所有请求共享
-    server = ThreadingHTTPServer((host, port), APIHandler)
-    t = threading.Thread(target=server.serve_forever, daemon=True)
-    t.start()
-    return server
+    # 端口被占用时尝试下一个端口
+    for offset in range(10):
+        try:
+            server = ThreadingHTTPServer((host, port + offset), server_bind_and_activate=True)
+            if offset > 0:
+                logger.warning("端口 %d 被占用，使用端口 %d", port, port + offset)
+                config["server"]["_actual_port"] = port + offset
+            t = threading.Thread(target=server.serve_forever, daemon=True)
+            t.start()
+            return server
+        except OSError:
+            continue
+    raise OSError("无法启动服务器：18980-18989 端口均被占用")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -323,7 +332,8 @@ def main():
     # ── HTTP 服务 ──
     server = start_dashboard_server()
     host = config.get("server", {}).get("host", "127.0.0.1")
-    port = config.get("server", {}).get("port", 18980)
+    # 如果端口被占用，start_dashboard_server 会自动选择下一个可用端口
+    port = config.get("server", {}).get("_actual_port") or config.get("server", {}).get("port", 18980)
     logger.info("汇总面板: http://%s:%d/dashboard.html", host, port)
 
     # ── 定时清理 ──

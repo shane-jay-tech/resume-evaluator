@@ -1731,16 +1731,23 @@ def post_setup(handler):
 
     # 写入 .env
     from utils.paths import get_env_path, get_downloads_dir
+    import hashlib
     env_path = get_env_path()
     watch = watch_dir or get_downloads_dir()
+    # 使用 SHA256 生成稳定 token（hash() 在 Python 3 中随机化）
+    token_suffix = hashlib.sha256(api_key.encode()).hexdigest()[:8]
     env_content = f"""# 简历评估系统配置
 DEEPSEEK_API_KEY={api_key}
-AUTH_TOKEN=resume_eval_{hash(api_key) % 900000 + 100000:06d}
+AUTH_TOKEN=resume_eval_{token_suffix}
 USER_NAME={user_name}
 WATCH_DIR={watch}
 """
     with open(env_path, "w", encoding="utf-8") as f:
         f.write(env_content)
+
+    # 重新加载环境变量（当前进程立即生效）
+    from dotenv import load_dotenv
+    load_dotenv(env_path, override=True)
 
     ctx.logger and ctx.logger.info("初始化设置完成 (user=%s, watch=%s)", user_name or "未填", watch)
     _respond_json(handler, {"ok": True, "message": "设置保存成功"})

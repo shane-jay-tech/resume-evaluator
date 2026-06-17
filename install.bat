@@ -25,7 +25,7 @@ set "DESKTOP=%USERPROFILE%\Desktop"
 set "SHORTCUT=%DESKTOP%\简历评估系统.lnk"
 
 powershell -Command ^
-  "$WScriptShell = New-Object -ComObject WScript.Shell; $Shortcut = $WScriptShell.CreateShortcut('%SHORTCUT%'); $Shortcut.TargetPath = '%APP_EXE%'; $Shortcut.WorkingDirectory = '%APP_DIR:\=/%简历评估'; $Shortcut.Description = '简历自动评估系统'; $Shortcut.Save()"
+  "$WScriptShell = New-Object -ComObject WScript.Shell; $Shortcut = $WScriptShell.CreateShortcut('%SHORTCUT%'); $Shortcut.TargetPath = '%APP_EXE%'; $Shortcut.WorkingDirectory = '%APP_DIR%简历评估'; $Shortcut.Description = '简历自动评估系统'; $Shortcut.IconLocation = '%APP_EXE%'; $Shortcut.Save()"
 
 if exist "%SHORTCUT%" (
     echo   桌面快捷方式已创建: 简历评估系统
