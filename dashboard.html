@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>简历评估面板</title>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>  <!-- UPGRADE-P2+: Chart.js for radar -->
+<script src="vendor/charts.js"></script>  <!-- 本地轻量图表库（离线可用） -->
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -191,7 +190,7 @@
     <option value="all">全部岗位</option>
   </select>
   <label style="font-size:12px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:8px;"><input type="checkbox" id="show-deleted" onchange="render()"> 含已清理</label>
-  <input type="text" id="filter-search" placeholder="🔍 搜索候选人…" oninput="render()" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;font-size:13px;width:160px;outline:none;">
+  <input type="text" id="filter-search" placeholder="🔍 搜索候选人…" oninput="debouncedRender()" style="padding:6px 12px;border-radius:16px;border:1px solid #ddd;font-size:13px;width:160px;outline:none;">
   <input type="date" id="filter-date-from" onchange="render()" style="padding:6px 8px;border-radius:16px;border:1px solid #ddd;font-size:12px;background:#fff;cursor:pointer;" title="开始日期">
   <span style="color:#888;font-size:12px;">至</span>
   <input type="date" id="filter-date-to" onchange="render()" style="padding:6px 8px;border-radius:16px;border:1px solid #ddd;font-size:12px;background:#fff;cursor:pointer;" title="结束日期">
@@ -307,7 +306,7 @@ function showUndoToast(ids, names) {
   const toast = document.createElement('div');
   toast.id = 'undo-toast';
   toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:12px 20px;border-radius:8px;z-index:300;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;align-items:center;gap:12px;';
-  toast.innerHTML = '<span>已删除 ' + names + '</span><button onclick="undoDelete()" style="background:#4a90d9;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">撤销</button><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;">&times;</button>';
+  toast.innerHTML = '<span>已删除 ' + esc(names) + '</span><button onclick="undoDelete()" style="background:#4a90d9;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">撤销</button><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;">&times;</button>';
   document.body.appendChild(toast);
   lastDeletedIds = ids;
   setTimeout(() => { const t = document.getElementById('undo-toast'); if (t) t.remove(); }, 10000);
@@ -473,6 +472,8 @@ function clearFilters() {
 }
 function toggleDetail(idx) { expandedIdx = expandedIdx === idx ? null : idx; render(); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'); }
+// JS 字符串转义：用于拼进 onclick 单引号参数
+function jsEsc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function exportCSV() {
   const pos = document.getElementById('export-position').value;
   const includeDeleted = document.getElementById('include-cleaned').checked ? '1' : '0';
@@ -866,19 +867,18 @@ function batchDelete() {
 function deleteCandidate(filteredIdx) {
   let filtered = getFilteredResults();
   const target = filtered[filteredIdx];
-  if (!target) return;
-  const realIdx = allData.indexOf(target);
-  if (realIdx < 0) return;
+  if (!target || !target.id) return;
 
   if (!confirm(`确定要删除「${target.candidate_name}」（${target.matched_position}，${target.match_score}分）吗？`)) return;
 
+  // 按 id 删除：避免过滤视图下标与后端全量列表错位导致删错人
   fetch('/api/delete', {
-    method: 'POST', headers: authHeaders(), body: JSON.stringify({indices: [realIdx]})
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ids: [target.id]})
   })
   .then(r => r.json())
   .then(data => {
     if (data.ok) {
-      showUndoToast(data.deleted_ids || [realIdx], target.candidate_name);
+      showUndoToast(data.deleted_ids || [target.id], target.candidate_name);
       expandedIdx = null;
       render();
     } else { alert('删除失败: ' + (data.error || '未知错误')); }
@@ -940,6 +940,16 @@ function extractFeatures(realIdx) {
   .catch(e => { btn.textContent = '🏷️特征'; btn.disabled = false; });
 }
 
+// 雷达图实例注册表（重绘前销毁，防止泄漏）
+const radarChartInstances = {};
+
+// 搜索输入防抖（避免每敲一个字符全量重建页面）
+let _debounceTimer = null;
+function debouncedRender() {
+  if (_debounceTimer) clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(() => { _debounceTimer = null; render(); }, 300);
+}
+
 function showRadarChart(realIdx, refFeatures) {
   // 缓存特征数据，render 重绘后可恢复
   const candidate = allData[realIdx];
@@ -952,6 +962,11 @@ function showRadarChart(realIdx, refFeatures) {
 function _drawRadarChart(realIdx, refFeatures) {
   const container = document.getElementById(`radar-container-${realIdx}`);
   if (!container) return;
+  // 销毁旧图表实例，避免重复绘制泄漏
+  if (radarChartInstances[realIdx]) {
+    try { radarChartInstances[realIdx].destroy(); } catch(e) {}
+    radarChartInstances[realIdx] = null;
+  }
   container.innerHTML = '<canvas id="radar-canvas-' + realIdx + '" style="max-height:300px;"></canvas>';
 
   const ctx = document.getElementById('radar-canvas-' + realIdx).getContext('2d');
@@ -966,7 +981,7 @@ function _drawRadarChart(realIdx, refFeatures) {
   const years = Math.min((refFeatures.years || 0) / 10, 1);
   const eduLevel = refFeatures.education ? 1 : 0.5;
 
-  new Chart(ctx, {
+  var _chart = new Chart(ctx, {
     type: 'radar',
     data: {
       labels: labels,
@@ -984,6 +999,7 @@ function _drawRadarChart(realIdx, refFeatures) {
       plugins: { legend: { display: false } }
     }
   });
+  radarChartInstances[realIdx] = _chart;
 }
 
 // ── AI Rank ──
@@ -1089,9 +1105,9 @@ function render() {
               <td onclick="toggleDetail(${i})"><strong>${esc(d.candidate_name)}</strong></td>
               <td onclick="toggleDetail(${i})">${esc(d.matched_position)}</td>
               <td onclick="toggleDetail(${i})"><span class="score ${scoreClass(d.match_score)}">${d.match_score}</span>/100</td>
-              <td onclick="toggleDetail(${i})"><span class="${verdictClass(d.verdict)}">${d.verdict}</span></td>
+              <td onclick="toggleDetail(${i})"><span class="${verdictClass(d.verdict)}">${esc(d.verdict)}</span></td>
               <td onclick="toggleDetail(${i})">${(d.timestamp||'--').slice(0,16)}</td>
-              <td><a class="report-link" href="javascript:void(0)" onclick="event.stopPropagation();viewReport('${esc(d.report_file)}', '${esc(d.resume_file)}', '${esc(d.candidate_name)}')">查看报告</a></td>
+              <td><a class="report-link" href="javascript:void(0)" onclick="event.stopPropagation();viewReport('${jsEsc(d.report_file)}', '${jsEsc(d.resume_file)}', '${jsEsc(d.candidate_name)}')">查看报告</a></td>
               <td>
                 <button onclick="event.stopPropagation(); extractFeatures(${realIdx})" style="background:#9b59b6;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="提取特征标签">🏷️特征</button>
                 <button onclick="event.stopPropagation(); promoteToReference(${realIdx})" style="background:#6c5ce7;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;" title="推荐为标杆">⭐标杆</button>
@@ -1206,28 +1222,21 @@ function renderDuplicates() {
   let html = '';
   pending.forEach(d => {
     const sel = dupSelected[d.fhash] ? 'checked' : '';
+    const fh = esc(String(d.fhash || ''));
     html += '<tr>' +
-      '<td><input type="checkbox" ' + sel + ' data-fhash="' + d.fhash + '" onchange="dupOnSelect(this)"></td>' +
-      '<td style="font-size:13px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (d.resume_file || '') + '">' + (d.resume_file || '-') + '</td>' +
-      '<td>' + (d.original_candidate_name || '-') + '</td>' +
-      '<td>' + (d.original_position || '-') + '</td>' +
+      '<td><input type="checkbox" ' + sel + ' data-fhash="' + fh + '" onchange="dupOnSelect(this)"></td>' +
+      '<td style="font-size:13px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + esc(d.resume_file || '') + '">' + esc(d.resume_file || '-') + '</td>' +
+      '<td>' + esc(d.original_candidate_name || '-') + '</td>' +
+      '<td>' + esc(d.original_position || '-') + '</td>' +
       '<td><span class="score ' + (d.original_score >= 75 ? 'high' : d.original_score >= 55 ? 'mid' : 'low') + '">' + (d.original_score || 0) + '</span></td>' +
-      '<td><span class="verdict-tag ' + verdictClass(d.original_verdict) + '">' + (d.original_verdict || '-') + '</span></td>' +
-      '<td style="font-size:12px;color:#888;">' + (d.timestamp || '').slice(11, 16) + '</td>' +
+      '<td><span class="' + verdictClass(d.original_verdict) + '">' + esc(d.original_verdict || '-') + '</span></td>' +
+      '<td style="font-size:12px;color:#888;">' + esc((d.timestamp || '').slice(11, 16)) + '</td>' +
       '<td style="white-space:nowrap;">' +
-        '<button onclick="dupReevaluate(\'' + d.fhash + '\')" style="background:#2ecc71;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:4px;">🔄</button>' +
-        '<button onclick="dupIgnore(\'' + d.fhash + '\')" style="background:#95a5a6;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>' +
+        '<button onclick="dupReevaluate(\'' + fh + '\')" style="background:#2ecc71;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:4px;">🔄</button>' +
+        '<button onclick="dupIgnore(\'' + fh + '\')" style="background:#95a5a6;color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>' +
       '</td></tr>';
   });
   tbody.innerHTML = html;
-}
-
-function verdictClass(v) {
-  if (v === '强烈推荐') return 'star';
-  if (v === '推荐') return 'rec';
-  if (v === '待定') return 'pend';
-  if (v === '不推荐') return 'rej';
-  return '';
 }
 
 function dupOnSelect(cb) {
@@ -1287,6 +1296,7 @@ let sseConnected = false;
 let sseConn = null;
 let pollTimer = null;
 let pendingTimer = null;
+let sseRetryTimer = null;  // 防止 onerror 多次触发时堆积重连定时器
 const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
 
 function connectSSE() {
@@ -1338,19 +1348,26 @@ function connectSSE() {
     sseConnected = true;
     if (pollTimer) clearInterval(pollTimer);
     if (pendingTimer) clearInterval(pendingTimer);
-    pollTimer = setInterval(render, 15000);
-    pendingTimer = setInterval(() => { loadPending(); loadDuplicates(); }, 30000);
+    // SSE 健康时事件驱动为主，兜底轮询拉长到 60s（降低页面重渲染频率）
+    pollTimer = setInterval(render, 60000);
+    pendingTimer = setInterval(() => { loadPending(); loadDuplicates(); }, 60000);
   };
 
   sseConn.onerror = function() {
     sseConnected = false;
     sseConn.close();
+    sseConn = null;
     if (pollTimer) clearInterval(pollTimer);
     if (pendingTimer) clearInterval(pendingTimer);
     pollTimer = setInterval(render, 5000);
     pendingTimer = setInterval(() => { loadPending(); loadDuplicates(); }, 8000);
-    // 30s 后重试 SSE
-    setTimeout(connectSSE, 30000);
+    // 防重复：onerror 多次触发只保留一个重连定时器
+    if (!sseRetryTimer) {
+      sseRetryTimer = setTimeout(function() {
+        sseRetryTimer = null;
+        connectSSE();
+      }, 30000);
+    }
   };
 }
 

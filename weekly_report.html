@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>招聘数据周报</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="vendor/charts.js"></script>  <!-- 本地轻量图表库（离线可用） -->
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:#f0f2f5; color:#333; padding:20px; }
@@ -81,7 +81,6 @@ td select.edited, td input.edited { border-color:#f39c12; background:#fffdf5; }
   @page { margin:1cm; size:A4 landscape; }
 }
 </style>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
 <body>
 
@@ -374,7 +373,7 @@ function renderAdvice(data) {
   if (highScore.length > 0) {
     html += `<div class="advice-item warn">
       <div class="advice-title">⚠️ 流失风险预警</div>
-      <div class="advice-text">有 <b>${highScore.length}</b> 位匹配度 ≥80 的候选人仍为「待筛选」状态：${highScore.slice(0,5).map(d=>d.candidate_name).join('、')}。建议尽快安排面试，避免候选人流失。</div>
+      <div class="advice-text">有 <b>${highScore.length}</b> 位匹配度 ≥80 的候选人仍为「待筛选」状态：${highScore.slice(0,5).map(d=>esc(d.candidate_name)).join('、')}。建议尽快安排面试，避免候选人流失。</div>
     </div>`;
   }
 
@@ -455,7 +454,7 @@ function renderSummary(data) {
   // Stagnation check
   const highScoreStale = data.filter(d => d.match_score >= 70 && (d.pipeline_status||'待筛选') === '待筛选');
   if (highScoreStale.length > 0) {
-    summary += `<br><br>⏳ <b>处理提醒</b>：有 <b>${highScoreStale.length}</b> 位匹配度≥70分的候选人仍处于「待筛选」状态（${highScoreStale.slice(0,3).map(d=>d.candidate_name).join('、')}${highScoreStale.length>3?'等':''}），建议尽快推进面试流程，避免候选人流失。`;
+    summary += `<br><br>⏳ <b>处理提醒</b>：有 <b>${highScoreStale.length}</b> 位匹配度≥70分的候选人仍处于「待筛选」状态（${highScoreStale.slice(0,3).map(d=>esc(d.candidate_name)).join('、')}${highScoreStale.length>3?'等':''}），建议尽快推进面试流程，避免候选人流失。`;
   }
 
   const thisWeekRec = thisWeek.filter(d=>d.verdict==='强烈推荐'||d.verdict==='推荐').length;
@@ -501,18 +500,19 @@ function saveChanges() {
 
 function deleteWeeklyCandidate(idx) {
   const target = allData[idx];
-  if (!target) return;
+  if (!target || !target.id) return;
   if (!confirm(`确定要删除「${target.candidate_name}」（${target.matched_position}，${target.match_score}分）吗？此操作不可恢复。`)) return;
 
+  // 按 id 删除：避免与后端全量列表下标错位删错人
   fetch('/api/delete', {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({indices: [idx]})
+    body: JSON.stringify({ids: [target.id]})
   })
   .then(r => r.json())
   .then(data => {
     if (data.ok) {
-      showToast(`✅ 已删除: ${data.deleted.join(', ')}`);
+      showToast(`✅ 已删除: ${target.candidate_name}`);
       render();
     } else {
       showToast('❌ 删除失败: ' + (data.error || '未知错误'), '#e74c3c');
@@ -652,11 +652,11 @@ function loadFunnelInsight() {
     });
     html += '</div>';
     html += `<div style="border-left:3px solid ${gapColor};padding:8px 16px;margin-bottom:12px;">
-      <b>瓶颈阶段：${data.bottleneck_stage}</b>（偏差 ${Math.round(data.bottleneck_gap * 100)}%）</div>`;
-    html += `<div style="font-size:13px;line-height:1.7;color:#555;margin-bottom:8px;">${data.analysis}</div>`;
+      <b>瓶颈阶段：${esc(data.bottleneck_stage)}</b>（偏差 ${Math.round(data.bottleneck_gap * 100)}%）</div>`;
+    html += `<div style="font-size:13px;line-height:1.7;color:#555;margin-bottom:8px;">${esc(data.analysis)}</div>`;
     if (data.suggestions && data.suggestions.length) {
       html += '<div style="font-size:13px;"><b>改进建议：</b><ul style="margin:4px 0 0 16px;">';
-      data.suggestions.forEach(s => { html += '<li>' + s + '</li>'; });
+      data.suggestions.forEach(s => { html += '<li>' + esc(s) + '</li>'; });
       html += '</ul></div>';
     }
     content.innerHTML = html;

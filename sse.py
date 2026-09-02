@@ -24,11 +24,11 @@ class SSEClient:
         self._event_counter = 0
 
     def send_event(self, event: str, data: dict | str):
-        """发送一条 SSE 事件（含自增 ID 用于断线重连）。"""
-        self._event_counter += 1
+        """发送一条 SSE 事件（含自增 ID）。"""
         payload = json.dumps(data, ensure_ascii=False) if isinstance(data, dict) else data
-        msg = f"id: {self._event_counter}\nevent: {event}\ndata: {payload}\n\n"
         with self._lock:
+            self._event_counter += 1  # 计数与写同锁，避免并发下事件 ID 重复
+            msg = f"id: {self._event_counter}\nevent: {event}\ndata: {payload}\n\n"
             try:
                 self._wfile.write(msg.encode("utf-8"))
                 self._wfile.flush()
@@ -64,19 +64,28 @@ class SSEManager:
         logger.debug("SSE client disconnected, total=%d", len(self._clients))
 
     def broadcast(self, event: str, data: dict):
-        """向所有连接的客户端广播事件。"""
+        """向所有连接的客户端广播事件。
+
+        锁内只拷贝客户端列表，锁外逐个发送——避免一个慢客户端
+        的阻塞写拖垮整个事件总线。
+        """
         with self._lock:
-            dead = []
-            for client in self._clients:
-                if client.stopped:
-                    dead.append(client)
-                else:
-                    client.send_event(event, data)
-            for client in dead:
-                self._clients.discard(client)
+            clients = list(self._clients)
+        dead = []
+        for client in clients:
+            if client.stopped:
+                dead.append(client)
+            else:
+                client.send_event(event, data)
+        if dead:
+            with self._lock:
+                for client in dead:
+                    self._clients.discard(client)
 
         if event != "heartbeat":
-            logger.debug("SSE broadcast: %s → %d clients", event, len(self._clients))
+            with self._lock:
+                total = len(self._clients)
+            logger.debug("SSE broadcast: %s → %d clients", event, total)
 
     @property
     def client_count(self) -> int:

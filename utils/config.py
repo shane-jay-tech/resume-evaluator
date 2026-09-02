@@ -44,13 +44,57 @@ def load_config(config_path: str = "config.yaml") -> dict:
     return config
 
 
+def _parse_env_file(path: str):
+    """轻量 .env 解析器（无 python-dotenv 依赖时兜底）。
+
+    支持 KEY=VALUE、引号包裹、注释行、export 前缀。
+    已存在的环境变量不被覆盖（与 dotenv 默认行为一致）。
+    """
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line[7:].strip()
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                    value = value[1:-1]
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
 def _load_dotenv():
-    """加载 .env 文件（python-dotenv 可选依赖）。"""
+    """加载 .env 文件：优先用户数据目录，再回退当前目录。
+
+    python-dotenv 是可选依赖；未安装时用内置解析器兜底，
+    保证首次设置写入的 .env 在重启后一定生效。
+    """
+    from utils.paths import get_env_path
+    env_candidates = [get_env_path(), os.path.join(os.getcwd(), ".env")]
+    seen = set()
     try:
         from dotenv import load_dotenv
-        load_dotenv()
+        for p in env_candidates:
+            p = os.path.abspath(p)
+            if p not in seen and os.path.exists(p):
+                seen.add(p)
+                load_dotenv(p)
     except ImportError:
-        pass
+        for p in env_candidates:
+            p = os.path.abspath(p)
+            if p not in seen:
+                seen.add(p)
+                _parse_env_file(p)
 
 
 def save_config(config: dict, config_path: str = "config.yaml"):

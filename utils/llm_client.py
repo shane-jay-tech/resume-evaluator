@@ -6,6 +6,7 @@
 
 import json
 import logging
+import threading
 import time
 from typing import Any
 
@@ -139,6 +140,34 @@ class LLMClient:
     @property
     def model_name(self) -> str:
         return self.model
+
+
+# ── 客户端复用缓存：避免每份简历/每次请求重复构造 OpenAI 客户端 ──
+_client_cache: dict = {}
+_client_cache_lock = threading.Lock()
+
+
+def get_llm_client(config: dict) -> LLMClient:
+    """按连接参数缓存的 LLMClient 工厂。
+
+    相同 api_key/base_url/model/timeout 复用同一实例；
+    首次设置页面更新 key 后自然生成新实例。
+    """
+    llm_cfg = config.get("llm", {}) or {}
+    key = (
+        llm_cfg.get("api_key", "") or "",
+        llm_cfg.get("base_url", "") or "",
+        llm_cfg.get("model", "") or "",
+        float(llm_cfg.get("timeout", 300.0) or 300.0),
+    )
+    with _client_cache_lock:
+        client = _client_cache.get(key)
+        if client is None:
+            client = LLMClient(config)
+            _client_cache[key] = client
+            while len(_client_cache) > 8:  # 配置频繁变化时防无限增长
+                _client_cache.pop(next(iter(_client_cache)))
+    return client
 
 
 # ═══════════════════════════════════════════════════════════

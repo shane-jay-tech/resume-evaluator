@@ -9,7 +9,7 @@ import os
 import time
 from functools import wraps
 
-from utils.llm_client import LLMClient, parse_json
+from utils.llm_client import LLMClient, parse_json, get_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +272,7 @@ def match_position_by_filename(filename: str, positions: list) -> dict:
 
 def match_position(resume_text: str, positions: list, config: dict, filename: str = "") -> dict:
     """判断简历所属岗位：优先文件名匹配，多岗位冲突时 LLM 评分选最优。"""
-    llm = LLMClient(config)
+    llm = get_llm_client(config)
 
     if filename:
         result = match_position_by_filename(filename, positions)
@@ -515,7 +515,7 @@ def extract_resume_structure(resume_text: str, config: dict) -> dict:
 
     对标 Moka AI 简历解析。提取：年限、技能、公司、学历、关键成果。
     """
-    llm = LLMClient(config)
+    llm = get_llm_client(config)
     prompt = f"""从以下简历中提取结构化信息。只返回 JSON，不要其他内容：
 {{
   "years_of_experience": 5,
@@ -560,7 +560,7 @@ def evaluate(resume_text: str, config: dict, references: dict = None, filename: 
     v5: store 参数用于查询面试反馈校准数据。
     """
     positions = config["positions"]
-    llm = LLMClient(config)
+    llm = get_llm_client(config)
 
     # 1. 岗位匹配
     match = match_position(resume_text, positions, config, filename)
@@ -675,7 +675,7 @@ def rank_candidates(results: list, position: str, config: dict) -> list:
     if not results:
         return []
 
-    llm = LLMClient(config)
+    llm = get_llm_client(config)
 
     candidates_text = ""
     for i, r in enumerate(results):
@@ -716,7 +716,7 @@ def rank_candidates(results: list, position: str, config: dict) -> list:
 
 def extract_reference_features(resume_text: str, position_config: dict, config: dict) -> dict:
     """从简历文本中提取结构化标签：技术栈、经验年限、行业、学历、关键能力等。"""
-    llm = LLMClient(config)
+    llm = get_llm_client(config)
     prompt = f"""你是一位专业的简历解析专家。请从以下候选人简历中提取结构化信息。
 
 岗位要求参考：

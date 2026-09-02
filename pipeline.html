@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>招聘 Pipeline</title>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; background:#f5f5f5; color:#333; padding:20px; }
@@ -223,6 +222,7 @@ function onDrop(e, newStatus) {
 
 // UPGRADE-P1+: SSE 实时事件连接 + 降级轮询
 let sseConn = null;
+let sseRetryTimer = null;
 let pollTimer = null;
 const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
 
@@ -241,9 +241,16 @@ function connectSSE() {
 
   sseConn.onerror = function() {
     sseConn.close();
+    sseConn = null;
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(loadPipeline, 8000);
-    setTimeout(connectSSE, 30000);
+    // 防重复：只保留一个重连定时器
+    if (!sseRetryTimer) {
+      sseRetryTimer = setTimeout(function() {
+        sseRetryTimer = null;
+        connectSSE();
+      }, 30000);
+    }
   };
 }
 

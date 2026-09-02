@@ -35,6 +35,7 @@ references: dict = {}
 logger = None
 project_dir: str = ""
 sse_manager: SSEManager = None
+processing_pool = None  # 简历评估线程池（main() 中创建）
 
 _start_time = None
 last_archive_count = 0
@@ -57,8 +58,8 @@ def notify(title: str, subtitle: str, message: str):
 # ═══════════════════════════════════════════════════════════════════
 
 def scan_existing(watch_dir: str):
-    """委托给 file_watcher 模块。"""
-    _scan_existing(watch_dir, store, _process_resume_wrapper)
+    """委托给 file_watcher 模块（使用全局处理线程池异步提交）。"""
+    _scan_existing(watch_dir, store, _process_resume_wrapper, executor=processing_pool)
 
 def _process_resume_wrapper(filepath: str):
     """包装器: 传递全局变量给 services.process_resume。"""
@@ -117,7 +118,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         sensitive_prefixes = ("/api/resume-text", "/api/resume-full",
                               "/api/export", "/api/search/resumes",
                               "/api/deleted", "/api/approvals", "/api/duplicates",
-                              "/api/stats", "/api/audit",
+                              "/api/stats", "/api/audit", "/api/health/deep",
                               "/api/cross-validation", "/api/feedback", "/api/regression")
         needs_auth = any(path.startswith(p) for p in sensitive_prefixes)
         if needs_auth and not _check_auth(self):
@@ -130,11 +131,16 @@ class APIHandler(SimpleHTTPRequestHandler):
             handler(self)
             return
 
-        # API 路径前缀匹配（兼容 /api/resume-text?file=xxx 等带子路径的）
+        # API 路径前缀匹配：取最长匹配（避免 /api/search 抢走 /api/search/resumes/xxx）
+        best_match = None
         for route_path, handler in GET_ROUTES.items():
-            if path.startswith(route_path):
-                handler(self)
-                return
+            if path.startswith(route_path) and (
+                best_match is None or len(route_path) > len(best_match[0])
+            ):
+                best_match = (route_path, handler)
+        if best_match:
+            best_match[1](self)
+            return
 
         # fallback 到静态文件
         super().do_GET()
@@ -144,8 +150,10 @@ class APIHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
 
-        # 认证（首次配置和健康检查免认证）
-        skip_auth = path in ("/api/health", "/api/test-connection", "/api/setup")
+        # 认证：连接测试与首次配置仅在「尚未初始化」时免认证，
+        # 一旦配置过 AUTH_TOKEN，覆盖配置类操作必须带 token
+        from utils.config import get_auth_token
+        skip_auth = (path in ("/api/test-connection", "/api/setup")) and not get_auth_token()
         if not skip_auth and not _check_auth(self):
             _respond_json(self, {"ok": False, "error": "未授权"}, 401)
             return
@@ -156,18 +164,7 @@ class APIHandler(SimpleHTTPRequestHandler):
         if handler:
             handler(self, body)
         else:
-            import sys as _sys
-            print(f"[DEBUG] POST {path} - NO HANDLER FOUND in {list(POST_ROUTES.keys())[:5]}...", file=_sys.stderr, flush=True)
             _respond_json(self, {"ok": False, "error": f"未知端点: {path}"}, 404)
-        return
-
-        # 兼容子路径
-        for route_path, handler in POST_ROUTES.items():
-            if path.startswith(route_path):
-                handler(self, body)
-                return
-
-        _respond_json(self, {"ok": False, "error": "unknown endpoint"}, 404)
 
     # ── Helpers ──────────────────────────────────────
 
@@ -328,7 +325,13 @@ def main():
         logger.warning("[archive] 归档失败: %s", e)
 
     # ── 目录 ──
-    watch_dirs = config.get("monitor", {}).get("directories", ["~/Downloads"])
+    # 环境变量 WATCH_DIR（首次设置页写入）优先于配置文件，保证用户选择的目录在重启后仍生效
+    env_watch = os.getenv("WATCH_DIR", "").strip()
+    if env_watch:
+        watch_dirs = [env_watch]
+        logger.info("使用首次设置指定的监控目录: %s", env_watch)
+    else:
+        watch_dirs = config.get("monitor", {}).get("directories", ["~/Downloads"])
     watch_dir = os.path.expanduser(watch_dirs[0])
     report_dir = os.path.expanduser(config.get("report_dir", "./reports"))
     if not os.path.isabs(report_dir):
@@ -392,24 +395,44 @@ def main():
     if pending_tasks:
         logger.info("任务队列: %d 个任务待处理", len(pending_tasks))
 
-    try:
-        # 检测是否需要首次引导
-        from utils.config import get_auth_token
-        token = get_auth_token()
-        if token:
-            url = f"http://{host}:{port}/dashboard.html"
-        else:
-            url = f"http://{host}:{port}/setup"
-            logger.info("检测到首次启动，打开引导页")
-        webbrowser.open(url)
-    except Exception:
-        pass  # 无 GUI 环境（服务器/SSH）下 webbrowser 可能失败
+    # 浏览器自动打开可配置（server.auto_open_browser: false 可关闭）
+    auto_browser = config.get("server", {}).get("auto_open_browser", True)
+    if auto_browser:
+        try:
+            # 检测是否需要首次引导
+            from utils.config import get_auth_token
+            token = get_auth_token()
+            if token:
+                url = f"http://{host}:{port}/dashboard.html"
+            else:
+                url = f"http://{host}:{port}/setup"
+                logger.info("检测到首次启动，打开引导页")
+            webbrowser.open(url)
+        except Exception:
+            pass  # 无 GUI 环境（服务器/SSH）下 webbrowser 可能失败
 
-    # ── 扫描已有文件 + 文件监控 ──
-    scan_existing(watch_dir)
+    # ── 简历处理线程池（并发评估，不阻塞监控与面板） ──
+    import concurrent.futures as _cf
+    llm_cfg = config.get("llm", {}) or {}
+    pool_size = max(1, int(llm_cfg.get("concurrency", 2) or 2))
+    processing_pool = _cf.ThreadPoolExecutor(max_workers=pool_size, thread_name_prefix="resume-eval")
 
-    observer = Observer()
-    observer.schedule(ResumeHandler(_process_resume_wrapper), watch_dir, recursive=False)
+    # ── 扫描已有文件（后台执行，面板立即可用）+ 文件监控 ──
+    auto_scan = config.get("monitor", {}).get("auto_process_existing", True)
+    if auto_scan:
+        scan_thread = threading.Thread(
+            target=scan_existing, args=(watch_dir,), daemon=True, name="startup-scan"
+        )
+        scan_thread.start()
+        logger.info("启动扫描已在后台开始（存量简历将异步评估，面板不受影响）")
+    else:
+        logger.info("已关闭启动时自动处理存量文件（monitor.auto_process_existing=false）")
+
+    if sys.platform == "win32":
+        observer = Observer(timeout=3)  # PollingObserver 轮询间隔 3s，降低 CPU 占用
+    else:
+        observer = Observer()
+    observer.schedule(ResumeHandler(_process_resume_wrapper, processing_pool), watch_dir, recursive=False)
     observer.start()
     logger.info("文件监控已启动（稳定性检测模式），等待新简历… (Ctrl+C 退出)")
 

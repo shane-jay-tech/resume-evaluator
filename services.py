@@ -115,33 +115,45 @@ def process_resume(filepath: str, store, config: dict, references: dict,
             logger.info("文本提取成功 (%d 字符)，开始 LLM 评估…", len(text))
 
         # v5: 结构化提取（辅助评估 LLM 精准定位关键信息）
-        from evaluator import extract_resume_structure
-        try:
-            structure = extract_resume_structure(text, config)
-            if structure and any(structure.get(k) for k in ("tech_stack", "companies", "key_achievements")):
-                # 将结构化信息注入简历文本头部，帮助评估 LLM 注意到细节
-                struct_header = "【系统辅助：简历结构化提取】\n"
-                if structure.get("years_of_experience"):
-                    struct_header += f"- 工作年限：约 {structure['years_of_experience']} 年\n"
-                if structure.get("education_level"):
-                    struct_header += f"- 学历：{structure['education_level']}\n"
-                if structure.get("tech_stack"):
-                    struct_header += f"- 技能/工具：{', '.join(structure['tech_stack'])}\n"
-                if structure.get("companies"):
-                    struct_header += f"- 曾任职公司：{', '.join(structure['companies'])}\n"
-                if structure.get("recent_role"):
-                    struct_header += f"- 最近职位：{structure['recent_role']}\n"
-                if structure.get("key_achievements"):
-                    struct_header += "- 关键成果：" + "; ".join(structure['key_achievements']) + "\n"
-                struct_header += "\n---\n\n"
-                text = struct_header + text  # 注入到简历文本前方
-                if logger:
-                    logger.debug("结构化提取完成: 年限=%s, 技能=%s",
-                                structure.get("years_of_experience"),
-                                len(structure.get("tech_stack", [])))
-        except Exception as e:
+        # 性能优化：文件名已唯一匹配岗位时跳过 —— 岗位已知，评估 LLM 的三阶段
+        # prompt 直接读简历原文，结构化注入收益低。每份简历可省一次 LLM 调用。
+        # 配置 llm.pre_analysis: auto(默认) | on(每次提取) | off(关闭)
+        from evaluator import extract_resume_structure, match_position_by_filename
+        pre_cfg = (config.get("llm", {}) or {}).get("pre_analysis", "auto")
+        skip_structure = pre_cfg == "off"
+        if pre_cfg == "auto":
+            fm = match_position_by_filename(fname, config.get("positions", []))
+            skip_structure = bool(fm and not fm.get("multi_match"))
+        if skip_structure:
             if logger:
-                logger.debug("结构化提取跳过: %s", e)
+                logger.debug("跳过结构化提取（文件名已匹配岗位）: %s", fname)
+        else:
+            try:
+                structure = extract_resume_structure(text, config)
+                if structure and any(structure.get(k) for k in ("tech_stack", "companies", "key_achievements")):
+                    # 将结构化信息注入简历文本头部，帮助评估 LLM 注意到细节
+                    struct_header = "【系统辅助：简历结构化提取】\n"
+                    if structure.get("years_of_experience"):
+                        struct_header += f"- 工作年限：约 {structure['years_of_experience']} 年\n"
+                    if structure.get("education_level"):
+                        struct_header += f"- 学历：{structure['education_level']}\n"
+                    if structure.get("tech_stack"):
+                        struct_header += f"- 技能/工具：{', '.join(structure['tech_stack'])}\n"
+                    if structure.get("companies"):
+                        struct_header += f"- 曾任职公司：{', '.join(structure['companies'])}\n"
+                    if structure.get("recent_role"):
+                        struct_header += f"- 最近职位：{structure['recent_role']}\n"
+                    if structure.get("key_achievements"):
+                        struct_header += "- 关键成果：" + "; ".join(structure['key_achievements']) + "\n"
+                    struct_header += "\n---\n\n"
+                    text = struct_header + text  # 注入到简历文本前方
+                    if logger:
+                        logger.debug("结构化提取完成: 年限=%s, 技能=%s",
+                                    structure.get("years_of_experience"),
+                                    len(structure.get("tech_stack", [])))
+            except Exception as e:
+                if logger:
+                    logger.debug("结构化提取跳过: %s", e)
 
         result = evaluate(text, config, references, filename=fname, store=store)
 

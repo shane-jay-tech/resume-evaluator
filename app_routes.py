@@ -13,7 +13,7 @@ from urllib.parse import urlparse, parse_qs, quote
 from evaluator import evaluate as do_evaluate
 from evaluator import extract_reference_features, _get_dimensions, _build_eval_system, rank_candidates
 from evaluator import build_eval_prompt
-from utils.llm_client import LLMClient, parse_json
+from utils.llm_client import LLMClient, parse_json, get_llm_client
 from reporter import generate_markdown
 from parser import extract_text
 from sse import SSEClient, EVENT_EVAL_COMPLETE, EVENT_STATUS_CHANGE, EVENT_PENDING_UPDATE
@@ -64,8 +64,14 @@ def _find_resume_file(stored_filename: str) -> str | None:
 
     def _search_in_dir(directory: str, filename: str) -> str | None:
         """在指定目录中搜索文件，先精确匹配再模糊匹配。"""
+        def _within(path: str) -> bool:
+            prefix = os.path.realpath(directory)
+            if not prefix.endswith(os.sep):
+                prefix += os.sep
+            return os.path.realpath(path).startswith(prefix)
+
         exact = os.path.join(directory, filename)
-        if os.path.isfile(exact) and os.path.realpath(exact).startswith(directory):
+        if os.path.isfile(exact) and _within(exact):
             return exact
         # 模糊匹配
         key = filename.rsplit(".", 1)[0] if "." in filename else filename
@@ -83,7 +89,7 @@ def _find_resume_file(stored_filename: str) -> str | None:
                 if "】" in fnorm:
                     fnorm = fnorm.split("】", 1)[1].strip()
                 fnorm = fnorm.replace(" ", "").lower()
-                if fnorm == key and os.path.realpath(fpath).startswith(directory):
+                if fnorm == key and _within(fpath):
                     return fpath
         except Exception:
             pass
@@ -107,14 +113,6 @@ def _respond_json(handler, data, code=200):
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
-
-
-def _read_body(handler) -> str:
-    """读取 HTTP 请求体。"""
-    content_length = int(handler.headers.get("Content-Length", "0"))
-    if content_length == 0:
-        return ""
-    return handler.rfile.read(content_length).decode("utf-8", errors="replace")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -265,7 +263,11 @@ def get_resume_text(handler):
 
 def get_eval_trends(handler):
     qs = parse_qs(urlparse(handler.path).query)
-    days = int(qs.get("days", [7])[0])
+    try:
+        days = int(qs.get("days", [7])[0])
+    except (TypeError, ValueError):
+        _respond_json(handler, {"ok": False, "error": "days 参数必须是数字"}, 400)
+        return
     trends = ctx.store.get_eval_trends(days)
     _respond_json(handler, {"ok": True, "days": days, "trends": trends})
 
@@ -294,7 +296,11 @@ def get_search_resumes(handler):
     """FTS5 全文搜索简历。"""
     qs = parse_qs(urlparse(handler.path).query)
     query = qs.get("q", [""])[0].strip()
-    limit = int(qs.get("limit", ["20"])[0])
+    try:
+        limit = int(qs.get("limit", ["20"])[0])
+    except (TypeError, ValueError):
+        _respond_json(handler, {"ok": False, "error": "limit 参数必须是数字"}, 400)
+        return
     if not query:
         _respond_json(handler, {"ok": False, "error": "需要 q 参数（搜索关键词）"}, 400)
         return
@@ -400,7 +406,7 @@ def get_health_deep(handler):
     # LLM API 健康检查
     llm_health = {"ok": True}
     try:
-        llm = LLMClient(ctx.config)
+        llm = get_llm_client(ctx.config)
         t0 = time.time()
         resp = llm.chat(
             [{"role": "user", "content": "回复 ok"}],
@@ -482,6 +488,8 @@ def post_save(handler, data):
     try:
         updates = data.get("updates", [])
         now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        saved = 0
+        results_cache = None
         for upd in updates:
             idx = upd.get("index")
             rid = upd.get("id")
@@ -489,22 +497,26 @@ def post_save(handler, data):
             if rid:
                 result = ctx.store.get_result_by_id(rid)
             elif idx is not None:
-                results = ctx.store.get_all_results()
-                if 0 <= idx < len(results):
-                    result = results[idx]
+                if results_cache is None:
+                    results_cache = ctx.store.get_all_results()
+                if 0 <= idx < len(results_cache):
+                    result = results_cache[idx]
             if not result:
                 continue
             rid = result["id"]
+            merged = {}
             for key in ("verdict", "match_score", "notes", "pipeline_status"):
                 if key in upd:
                     old_val = result.get(key)
                     new_val = upd[key]
+                    merged[key] = new_val
                     if key == "pipeline_status" and new_val != old_val:
                         ctx.store.add_status_history(rid, old_val or "", new_val)
-                        ctx.store.update_result(rid, {key: new_val, "last_status_change": now_ts})
-                    else:
-                        ctx.store.update_result(rid, {key: new_val})
-        _respond_json(handler, {"ok": True, "count": len(updates)})
+                        merged["last_status_change"] = now_ts
+            if merged:
+                ctx.store.update_result(rid, merged)  # 合并为一次写库
+            saved += 1
+        _respond_json(handler, {"ok": True, "count": saved})
     except Exception as e:
         _respond_json(handler, {"ok": False, "error": str(e)}, 500)
 
@@ -578,7 +590,7 @@ def post_assign(handler, data):
 
         if result.get("skipped"):
             # 手动分配，直接强制评估（绕过岗位匹配）
-            llm = LLMClient(ctx.config)
+            llm = get_llm_client(ctx.config)
             pos = positions[pos_idx]
             ref_text = ctx.references.get(pos["name"], "") if ctx.references else ""
             dimensions = _get_dimensions(pos)
@@ -791,25 +803,36 @@ def post_verify(handler, data):
 
 
 def post_batch_evaluate(handler, data):
+    """批量评估改为后台执行：立即返回，进度通过 SSE eval_complete 实时推送。"""
     try:
         pending = ctx.store.get_all_pending()
         if not pending:
             _respond_json(handler, {"ok": False, "error": "无待分配简历"}, 400)
             return
-        from concurrent.futures import ThreadPoolExecutor, as_completed
         pending_to_process = [p for p in pending if os.path.exists(p["filepath"])]
-        ctx.logger.info("开始并发评估 %d 份简历…", len(pending_to_process)) if ctx.logger else None
-        results = []
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(_proc, p["filepath"]): p for p in pending_to_process}
-            for future in as_completed(futures):
-                p = futures[future]
-                try:
-                    future.result()
-                    results.append({"file": p["resume_file"], "status": "ok"})
-                except Exception as e:
-                    results.append({"file": p["resume_file"], "status": "error", "error": str(e)})
-        _respond_json(handler, {"ok": True, "results": results})
+        if not pending_to_process:
+            _respond_json(handler, {"ok": False, "error": "待分配简历的原始文件均已不存在"}, 400)
+            return
+
+        def _run_batch():
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            ctx.logger.info("后台开始并发评估 %d 份简历…", len(pending_to_process)) if ctx.logger else None
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {executor.submit(_proc, p["filepath"]): p for p in pending_to_process}
+                for future in as_completed(futures):
+                    p = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        ctx.logger.warning("批量评估单份失败 %s: %s", p["resume_file"], e) if ctx.logger else None
+            ctx.logger.info("后台批量评估完成") if ctx.logger else None
+
+        import threading
+        threading.Thread(target=_run_batch, daemon=True, name="batch-evaluate").start()
+        _respond_json(handler, {
+            "ok": True, "started": True, "count": len(pending_to_process),
+            "message": "已在后台开始评估，结果会实时出现在面板中",
+        })
     except Exception as e:
         _respond_json(handler, {"ok": False, "error": str(e)}, 500)
 
@@ -940,7 +963,7 @@ def post_funnel_analysis(handler, data):
         analysis = ""
         suggestions = []
         try:
-            llm = LLMClient(ctx.config)
+            llm = get_llm_client(ctx.config)
             prompt = f"""你是一位资深招聘流程优化专家。请分析以下招聘漏斗数据并给出改进建议。
 
 数据：总评估 {total} 人，面试中 {interviewing} 人，已通过 {passed} 人，已淘汰 {eliminated} 人。
@@ -1094,7 +1117,7 @@ def post_pc_llm_edit(handler, data):
             "scoring": pos.get("scoring", {}),
         }
 
-        llm = LLMClient(ctx.config)
+        llm = get_llm_client(ctx.config)
         prompt = f"""你是一位招聘标准制定专家。以下是「{pos_name}」岗位当前的评估标准：
 
 {_json.dumps(current, ensure_ascii=False, indent=2)}
@@ -1366,7 +1389,7 @@ def post_regression_run(handler, data):
             return
 
         # 重新评估每个候选人
-        llm = LLMClient(ctx.config)
+        llm = get_llm_client(ctx.config)
         ref_text = ctx.references.get(position, "") if ctx.references else ""
         reg_results = []
         score_changes = []
@@ -1752,7 +1775,7 @@ def post_test_connection(handler, body):
         _respond_json(handler, {"ok": True, "model": actual_model, "latency": latency})
     except Exception as e:
         err_msg = str(e)[:200]
-        _respond_json(handler, {"ok": False, "error": err_msg}, 200)
+        _respond_json(handler, {"ok": False, "error": err_msg}, 400)
 
 
 def get_setup_page(handler):
@@ -1794,10 +1817,10 @@ def post_setup(handler, body):
         _respond_json(handler, {"ok": False, "error": "API Key 不能为空"}, 400)
         return
 
-    base_url = data.get("base_url", "").strip()
-    model_name = data.get("model_name", "").strip()
-    user_name = data.get("user_name", "").strip()
-    watch_dir = data.get("watch_dir", "").strip()
+    base_url = body.get("base_url", "").strip()
+    model_name = body.get("model_name", "").strip()
+    user_name = body.get("user_name", "").strip()
+    watch_dir = body.get("watch_dir", "").strip()
 
     # 写入 .env
     from utils.paths import get_env_path, get_downloads_dir
@@ -1806,7 +1829,8 @@ def post_setup(handler, body):
     env_lines = [
         "# 简历评估系统配置",
         f"LLM_API_KEY={api_key}",
-        "AUTH_TOKEN=***REMOVED***",
+        "# 如需为本机面板加访问密码，取消下一行注释并修改值：",
+        "# AUTH_TOKEN=your-random-token",
         f"USER_NAME={user_name}",
         f"WATCH_DIR={watch}",
     ]
@@ -1818,10 +1842,15 @@ def post_setup(handler, body):
     with open(env_path, "w", encoding="utf-8") as f:
         f.write(env_content)
 
-    # 重新加载环境变量（当前进程立即生效）
-    from dotenv import load_dotenv
+    # 重新加载环境变量（当前进程立即生效，不依赖 python-dotenv）
     import os as _os
-    load_dotenv(env_path, override=True)
+    _os.environ["LLM_API_KEY"] = api_key
+    _os.environ["USER_NAME"] = user_name
+    _os.environ["WATCH_DIR"] = watch
+    if base_url:
+        _os.environ["LLM_BASE_URL"] = base_url
+    if model_name:
+        _os.environ["LLM_MODEL"] = model_name
 
     # 同步更新全局 config（避免重启才能用新 key）
     if ctx.config:
@@ -1836,8 +1865,8 @@ def post_setup(handler, body):
     _respond_json(handler, {"ok": True, "message": "设置保存成功"})
 
 
-def post_upload_resume(handler):
-    """网页上传简历文件。"""
+def post_upload_resume(handler, body):
+    """网页上传简历文件。（body 参数与其它 POST handler 保持一致，此处不使用）"""
     content_type = handler.headers.get("Content-Type", "")
     if "multipart/form-data" not in content_type:
         _respond_json(handler, {"ok": False, "error": "需要 multipart/form-data"}, 400)
@@ -1855,6 +1884,10 @@ def post_upload_resume(handler):
         return
 
     content_length = int(handler.headers.get("Content-Length", "0"))
+    # 大小上限 50MB，防止异常文件打爆磁盘
+    if content_length > 50 * 1024 * 1024:
+        _respond_json(handler, {"ok": False, "error": "文件过大（上限 50MB），请压缩后重试"}, 413)
+        return
     raw_body = handler.rfile.read(content_length)
     boundary_bytes = boundary.encode("utf-8")
 
@@ -1883,6 +1916,16 @@ def post_upload_resume(handler):
             continue
         orig_filename = match.group(1)
 
+        # 类型白名单
+        _allowed_ext = {".pdf", ".docx", ".doc", ".jpg", ".jpeg", ".png"}
+        _ext = os.path.splitext(orig_filename)[1].lower()
+        if _ext not in _allowed_ext:
+            _respond_json(handler, {
+                "ok": False,
+                "error": f"不支持的文件类型 {_ext or '未知'}，请上传 PDF / Word / 图片简历",
+            }, 400)
+            return
+
         # 保存文件
         from utils.paths import get_resumes_dir
         import time as _time
@@ -1894,17 +1937,17 @@ def post_upload_resume(handler):
 
         ctx.logger and ctx.logger.info("网页上传: %s -> %s (%d bytes)", orig_filename, safe_name, len(file_data))
 
-        # 触发处理
-        try:
-            _proc(filepath)
-        except Exception as e:
-            ctx.logger and ctx.logger.error("上传处理失败: %s", e)
+        # 后台异步评估：上传接口立即返回，评估结果通过 SSE 实时出现在面板
+        import threading
+        threading.Thread(target=_proc, args=(filepath,), daemon=True,
+                         name=f"upload-eval-{safe_name[:40]}").start()
 
         _respond_json(handler, {
             "ok": True,
             "filename": orig_filename,
             "saved_as": safe_name,
             "size": len(file_data),
+            "message": "已开始评估，结果会实时出现在面板中",
         })
         return
 

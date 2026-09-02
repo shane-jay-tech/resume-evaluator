@@ -78,8 +78,14 @@ def _extract_docx(filepath: str) -> str:
 
 
 def _extract_image(filepath: str, ocr_config: dict = None) -> str:
-    import pytesseract
-    from PIL import Image, ImageFilter, ImageOps
+    try:
+        import pytesseract
+        from PIL import Image
+    except ImportError as e:
+        raise RuntimeError(
+            "图片简历需要 OCR 组件：请运行 pip install pytesseract 并安装 Tesseract，"
+            "或将图片转换为 PDF 后重试。"
+        ) from e
 
     img = Image.open(filepath)
     cfg = ocr_config or {}
@@ -87,7 +93,13 @@ def _extract_image(filepath: str, ocr_config: dict = None) -> str:
     if cfg.get("preprocess_enabled", True):
         img = _preprocess_image(img, cfg.get("threshold", 128))
 
-    return pytesseract.image_to_string(img, lang="chi_sim+eng")
+    try:
+        return pytesseract.image_to_string(img, lang="chi_sim+eng")
+    except pytesseract.TesseractNotFoundError as e:
+        raise RuntimeError(
+            "本机未安装 Tesseract OCR 引擎，无法识别图片简历。"
+            "请安装 Tesseract（Windows 可下载 UB-Mannheim 安装包），或将图片转为 PDF 后重试。"
+        ) from e
 
 
 def _preprocess_image(img, threshold: int = 128):

@@ -11,6 +11,35 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
+# ── schema 语句解析辅助（_init_db 增量建表用） ──
+import re as _re
+
+
+def _schema_statements() -> list:
+    """把 SCHEMA 文本按 ';' 拆成可独立执行的语句（跳过注释与空行）。"""
+    out, buf = [], []
+    for line in SCHEMA.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        buf.append(line)
+        if stripped.endswith(";"):
+            out.append("\n".join(buf))
+            buf = []
+    if "".join(buf).strip():
+        out.append("\n".join(buf))
+    return out
+
+
+def _stmt_object_name(stmt: str) -> str | None:
+    """提取 CREATE TABLE/INDEX/VIEW 语句的对象名。"""
+    m = _re.match(
+        r"CREATE\s+(?:VIRTUAL\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?[\"']?(\w+)",
+        stmt, _re.IGNORECASE,
+    )
+    return m.group(1) if m else None
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS results (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,15 +274,35 @@ class DataStore:
     @property
     def conn(self) -> sqlite3.Connection:
         if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self.db_path)
-            self._local.conn.row_factory = sqlite3.Row
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-            self._local.conn.execute("PRAGMA foreign_keys=ON")
+            conn = sqlite3.connect(self.db_path, timeout=15)
+            conn.row_factory = sqlite3.Row
+            # 多线程并发写安全：忙等待 + WAL，避免 "database is locked"
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn = conn
         return self._local.conn
 
     def _init_db(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.executescript(SCHEMA)
+        conn = sqlite3.connect(self.db_path, timeout=15)
+        # 性能：老库跳过整段 schema 重建，只补缺失的表/索引
+        try:
+            existing = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'index')"
+            )}
+        except sqlite3.OperationalError:
+            existing = set()
+        if not existing:
+            conn.executescript(SCHEMA)
+        else:
+            for stmt in _schema_statements():
+                name = _stmt_object_name(stmt)
+                if name and name not in existing:
+                    try:
+                        conn.execute(stmt)
+                    except sqlite3.OperationalError:
+                        pass  # 并发初始化或方言差异，忽略
         # v2: 尝试添加新列（如果已存在则忽略错误）
         try:
             conn.execute("ALTER TABLE results ADD COLUMN eval_metadata TEXT DEFAULT '{}'")

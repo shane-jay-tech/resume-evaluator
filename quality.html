@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>评估质量监控</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="vendor/charts.js"></script>  <!-- 本地轻量图表库（离线可用） -->
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; background:#f0f2f5; color:#333; padding:20px; }
@@ -107,6 +106,7 @@ function authHeaders() {
 
 let currentDays = 7;
 let charts = {};
+let sseRetryTimer = null;
 
 function setDays(d) {
   currentDays = d;
@@ -295,7 +295,7 @@ function loadAudit() {
     // 常见问题
     if (r.top_issues && r.top_issues.length > 0) {
       posHtml += '<div style="margin-top:8px;font-size:13px;color:#888;">常见问题: ';
-      posHtml += r.top_issues.map(i => `${i.issue} (${i.count}次)`).join(' | ');
+      posHtml += r.top_issues.map(i => `${esc(i.issue)} (${i.count}次)`).join(' | ');
       posHtml += '</div>';
     }
 
@@ -309,7 +309,12 @@ function connectSSE() {
   const es = new EventSource('/api/events?token=' + token);
   es.addEventListener('eval_complete', function() { load(); });
   es.addEventListener('status_change', function() { load(); });
-  es.onerror = function() { es.close(); setTimeout(connectSSE, 30000); };
+  es.onerror = function() {
+    es.close();
+    if (!sseRetryTimer) {
+      sseRetryTimer = setTimeout(function() { sseRetryTimer = null; connectSSE(); }, 30000);
+    }
+  };
 }
 
 load();

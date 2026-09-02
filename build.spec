@@ -37,7 +37,10 @@ datas = [
     (str(ROOT / "config.yaml"), "."),
     (str(ROOT / "prompts"), "prompts"),
     (str(ROOT / "rules"), "rules"),
-]
+    # 修复：HTML 页面必须打包，否则打包版打开面板 404
+] + [(str(f), ".") for f in sorted(ROOT.glob("*.html"))] + (
+    [(str(ROOT / "vendor"), "vendor")] if (ROOT / "vendor").is_dir() else []
+)
 
 # ── 排除模块（减小包体积） ──
 excludes = [

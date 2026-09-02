@@ -31,10 +31,11 @@ MAX_WAIT = 30.0         # 最大等待时间（秒）
 class ResumeHandler(FileSystemEventHandler):
     """简历文件监控处理器。"""
 
-    def __init__(self, process_callback):
+    def __init__(self, process_callback, executor=None):
         super().__init__()
         self.extensions = {".pdf", ".docx", ".doc", ".jpeg", ".jpg", ".png"}
         self.process_callback = process_callback  # process_resume 函数
+        self.executor = executor  # 可选线程池：避免评估阻塞文件监控线程
 
     def on_created(self, event):
         if event.is_directory:
@@ -56,7 +57,10 @@ class ResumeHandler(FileSystemEventHandler):
         # 等待文件稳定后再处理
         if self._wait_stable(filepath):
             logger.info("文件已稳定，开始处理: %s", fname)
-            self.process_callback(filepath)
+            if self.executor:
+                self.executor.submit(self.process_callback, filepath)
+            else:
+                self.process_callback(filepath)
         else:
             logger.warning("文件超时未稳定，跳过: %s", fname)
 
@@ -108,8 +112,8 @@ class ResumeHandler(FileSystemEventHandler):
         return False
 
 
-def scan_existing(watch_dir: str, store, process_callback):
-    """扫描目录中已有但未处理的文件。"""
+def scan_existing(watch_dir: str, store, process_callback, executor=None):
+    """扫描目录中已有但未处理的文件（executor 提供时异步提交，不阻塞调用方）。"""
     if not os.path.isdir(watch_dir):
         logger.warning("监控目录不存在，跳过扫描: %s", watch_dir)
         return
@@ -129,4 +133,7 @@ def scan_existing(watch_dir: str, store, process_callback):
             store.add_processed(fh)
             continue
         logger.info("发现未处理文件: %s", f.name)
-        process_callback(fpath)
+        if executor:
+            executor.submit(process_callback, fpath)
+        else:
+            process_callback(fpath)

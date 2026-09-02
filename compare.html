@@ -109,6 +109,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 </div>
 
 <script>
+// HTML 转义（防简历投毒 XSS）
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;'); }
+
 let selectedIds = [];
 let allCandidates = [];
 
@@ -129,9 +132,9 @@ function searchCandidates(query) {
   ).slice(0, 8);
   if (matches.length === 0) { box.classList.remove('show'); return; }
   box.innerHTML = matches.map(c => `
-    <div class="search-item" onclick="addCandidate(${c.id},'${c.candidate_name.replace(/'/g,"\\'")}')">
-      <div class="name">${c.candidate_name}</div>
-      <div class="meta">${c.matched_position} · ${c.match_score}分 · ${c.verdict}</div>
+    <div class="search-item" onclick="addCandidate(${c.id})">
+      <div class="name">${esc(c.candidate_name)}</div>
+      <div class="meta">${esc(c.matched_position)} · ${c.match_score}分 · ${esc(c.verdict)}</div>
     </div>
   `).join('');
   box.classList.add('show');
@@ -141,7 +144,7 @@ function toggleSearchResults(show) {
   if (!show) setTimeout(() => document.getElementById('searchResults').classList.remove('show'), 200);
 }
 
-function addCandidate(id, name) {
+function addCandidate(id) {
   if (selectedIds.length >= 3) return;
   if (selectedIds.includes(id)) return;
   selectedIds.push(id);
@@ -165,7 +168,7 @@ function renderTags() {
   document.getElementById('selectedTags').innerHTML = selectedIds.map(id => {
     const c = allCandidates.find(x => x.id === id);
     const name = c ? c.candidate_name : id;
-    return `<span class="selected-tag">${name} <span class="remove" onclick="removeCandidate(${id})">×</span></span>`;
+    return `<span class="selected-tag">${esc(name)} <span class="remove" onclick="removeCandidate(${id})">×</span></span>`;
   }).join('');
 }
 
@@ -176,10 +179,10 @@ async function doCompare() {
   try {
     const resp = await fetch(`/api/compare?ids=${selectedIds.join(',')}`);
     const data = await resp.json();
-    if (!data.ok) { grid.innerHTML = `<div class="empty-state"><p>${data.error}</p></div>`; return; }
+    if (!data.ok) { grid.innerHTML = `<div class="empty-state"><p>${esc(data.error)}</p></div>`; return; }
     renderCompare(data.candidates);
   } catch(e) {
-    grid.innerHTML = `<div class="empty-state"><p>加载失败: ${e.message}</p></div>`;
+    grid.innerHTML = `<div class="empty-state"><p>加载失败: ${esc(e.message)}</p></div>`;
   }
 }
 
@@ -212,7 +215,7 @@ function renderCompare(candidates) {
       dimsHtml = dimDetails.map(d => {
         const barClass = d.score >= 8 ? 'high' : (d.score >= 6 ? 'medium' : 'low');
         return `<div class="dim-row">
-          <span class="dim-name">${d.dimension_name || d.dimension_key}</span>
+          <span class="dim-name">${esc(d.dimension_name || d.dimension_key)}</span>
           <div class="dim-bar"><div class="dim-bar-fill ${barClass}" style="width:${d.score * 10}%"></div></div>
           <span class="dim-score">${d.score}/10</span>
         </div>`;
@@ -223,7 +226,7 @@ function renderCompare(candidates) {
         const name = typeof v === 'object' ? (v.name || k) : k;
         const barClass = score >= 8 ? 'high' : (score >= 6 ? 'medium' : 'low');
         return `<div class="dim-row">
-          <span class="dim-name">${name}</span>
+          <span class="dim-name">${esc(name)}</span>
           <div class="dim-bar"><div class="dim-bar-fill ${barClass}" style="width:${score * 10}%"></div></div>
           <span class="dim-score">${score}/10</span>
         </div>`;
@@ -236,15 +239,15 @@ function renderCompare(candidates) {
     return `
     <div class="candidate-card">
       <div class="card-header">
-        <div class="name">${c.candidate_name} ${cvHtml} ${fbHtml}</div>
-        <div class="meta">${c.matched_position} · 评估时间: ${(c.timestamp || '').substr(0,10)}</div>
+        <div class="name">${esc(c.candidate_name)} ${cvHtml} ${fbHtml}</div>
+        <div class="meta">${esc(c.matched_position)} · 评估时间: ${esc((c.timestamp || '').substr(0,10))}</div>
       </div>
       <div class="card-body">
         <div class="score-big ${scoreClass}">${c.match_score}</div>
         <div class="score-label">综合匹配度</div>
-        <div style="text-align:center"><span class="verdict-badge ${vClass}">${c.verdict}</span></div>
-        ${c.score_reasoning ? `<p style="font-size:13px;color:#888;margin-top:8px;line-height:1.5">${c.score_reasoning.substr(0,200)}${c.score_reasoning.length > 200 ? '…' : ''}</p>` : ''}
-        ${c.summary ? `<p style="font-size:13px;margin-top:8px;color:#555">📝 ${c.summary}</p>` : ''}
+        <div style="text-align:center"><span class="verdict-badge ${vClass}">${esc(c.verdict)}</span></div>
+        ${c.score_reasoning ? `<p style="font-size:13px;color:#888;margin-top:8px;line-height:1.5">${esc(c.score_reasoning.substr(0,200))}${c.score_reasoning.length > 200 ? '…' : ''}</p>` : ''}
+        ${c.summary ? `<p style="font-size:13px;margin-top:8px;color:#555">📝 ${esc(c.summary)}</p>` : ''}
 
         <div class="dim-section">
           <h3>维度评分对比</h3>
@@ -254,13 +257,13 @@ function renderCompare(candidates) {
         ${highlights.length > 0 ? `
         <div class="list-box">
           <h4>亮点</h4>
-          <ul class="highlights">${highlights.map(h => `<li>${h}</li>`).join('')}</ul>
+          <ul class="highlights">${highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>
         </div>` : ''}
 
         ${risks.length > 0 ? `
         <div class="list-box">
           <h4>风险点</h4>
-          <ul class="risks">${risks.map(r => `<li>${r}</li>`).join('')}</ul>
+          <ul class="risks">${risks.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
         </div>` : ''}
       </div>
     </div>`;

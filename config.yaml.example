@@ -1,10 +1,14 @@
 server:
   host: "0.0.0.0"
   port: 18980
+  # 启动时自动打开浏览器面板；服务长期后台运行时建议设为 false
+  auto_open_browser: true
 
 monitor:
   directories:
     - "~/Downloads"
+  # 启动时自动处理监控目录中的存量简历（后台异步执行）；希望只处理新文件时设为 false
+  auto_process_existing: true
 
 database:
   path: "data/recruitment.db"
@@ -25,6 +29,10 @@ llm:
   api_key_env: "DEEPSEEK_API_KEY"
   base_url: "https://api.deepseek.com/v1"
   model: "deepseek-chat"
+  # 并发评估份数（1-4 推荐）
+  concurrency: 2
+  # 结构化预提取策略：auto=文件名已匹配岗位时跳过（省一次调用）/ on / off
+  pre_analysis: auto
 
 positions:
   - name: "国内游戏广告创意策划"

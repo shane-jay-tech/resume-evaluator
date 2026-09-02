@@ -19,7 +19,7 @@ fpdf2>=2.7.0
 
 # 配置管理
 PyYAML>=6.0
-python-dotenv>=1.0.0
+python-dotenv>=1.0.0  # .env 支持（首次设置 API Key 依赖；代码内置兜底解析）
 
 # 测试
 pytest>=8.0.0

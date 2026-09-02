@@ -6,10 +6,15 @@ server:
   host: 127.0.0.1
   port: 18980
   cors_origin: "http://127.0.0.1:18980"
+  # 启动时自动打开浏览器面板；服务长期后台运行时建议设为 false
+  auto_open_browser: true
 
 monitor:
   directories:
   - ~/Downloads
+  # 启动时自动处理监控目录中的存量简历（后台异步执行，不阻塞面板）；
+  # 希望只处理新投递的文件时设为 false
+  auto_process_existing: true
 
 database:
   path: data/recruitment.db
@@ -35,6 +40,10 @@ llm:
   temperature: 0.3
   max_retries: 2
   timeout: 300.0
+  # 并发评估份数（启动扫描与批量处理共用，1-4 推荐）
+  concurrency: 2
+  # 结构化预提取策略：auto=文件名已匹配岗位时跳过（省一次调用）/ on=每次都提取 / off=关闭
+  pre_analysis: auto
 
 # ── 交叉校验（可选，需要额外配置 Claude API） ──
 cross_validation:
