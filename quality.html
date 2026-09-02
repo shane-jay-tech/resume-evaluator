@@ -100,7 +100,7 @@
 
 <script>
 function authHeaders() {
-  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const token = localStorage.getItem('auth_token') || '';
   return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 
@@ -305,7 +305,7 @@ function loadAudit() {
 
 // SSE for real-time updates
 function connectSSE() {
-  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const token = localStorage.getItem('auth_token') || '';
   const es = new EventSource('/api/events?token=' + token);
   es.addEventListener('eval_complete', function() { load(); });
   es.addEventListener('status_change', function() { load(); });

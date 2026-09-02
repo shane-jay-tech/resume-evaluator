@@ -67,7 +67,7 @@
 
 <script>
 function authHeaders() {
-  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const token = localStorage.getItem('auth_token') || '';
   return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 
@@ -224,7 +224,7 @@ function onDrop(e, newStatus) {
 let sseConn = null;
 let sseRetryTimer = null;
 let pollTimer = null;
-const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
+const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '');
 
 function connectSSE() {
   if (sseConn) { sseConn.close(); }
