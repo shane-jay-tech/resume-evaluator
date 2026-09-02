@@ -170,7 +170,7 @@ td select.edited, td input.edited { border-color:#f39c12; background:#fffdf5; }
 
 <script>
 function authHeaders() {
-  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const token = localStorage.getItem('auth_token') || '';
   return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
 }
 const VERDICT_MAP = { '强烈推荐':'star', '推荐':'rec', '待定':'pend', '不推荐':'rej' };
@@ -626,7 +626,7 @@ function render() {
 
 // UPGRADE-P2+: 漏斗 AI 归因分析
 function loadFunnelInsight() {
-  const token = localStorage.getItem('auth_token') || '***REMOVED***';
+  const token = localStorage.getItem('auth_token') || '';
   fetch('/api/insights/funnel-analysis', {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
   })

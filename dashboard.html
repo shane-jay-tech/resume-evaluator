@@ -282,7 +282,7 @@ let lastDeletedIds = [];
 let _authToken = null;
 function getAuthToken() {
   if (_authToken) return _authToken;
-  _authToken = localStorage.getItem('auth_token') || '***REMOVED***';
+  _authToken = localStorage.getItem('auth_token') || '';
   if (!_authToken) {
     // 自动从 health API 获取 server-configured token
     fetch('/api/health').then(r => r.json()).then(d => {
@@ -292,7 +292,7 @@ function getAuthToken() {
       }
     }).catch(() => {});
   }
-  return _authToken || '***REMOVED***';
+  return _authToken || '';
 }
 function authHeaders() {
   const token = getAuthToken();
@@ -1297,7 +1297,7 @@ let sseConn = null;
 let pollTimer = null;
 let pendingTimer = null;
 let sseRetryTimer = null;  // 防止 onerror 多次触发时堆积重连定时器
-const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '***REMOVED***');
+const SSE_URL = '/api/events?token=' + (localStorage.getItem('auth_token') || '');
 
 function connectSSE() {
   if (sseConn) { sseConn.close(); }
