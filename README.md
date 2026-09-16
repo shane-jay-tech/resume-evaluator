@@ -21,7 +21,7 @@
 - 高分结果可触发二次交叉复核
 - Markdown 报告、评分质量审计和统计指标
 - 下载目录文件监控与实时页面更新
-- SQLite 本地存储、每日自动备份、90 天归档与 5 天清理
+- SQLite 本地存储、定时备份（默认每 6 小时，保留 30 天）、90 天归档与清理（入库简历保留 7 天、已淘汰 1 天；可在 config.yaml 覆盖）
 
 ## 评分流程
 
@@ -35,7 +35,7 @@
         ├ 硬性门槛检查
         ├ 证据优先评分
         └ 交叉自检（自洽性 / 消极偏向）
-    → cross_validator.py 高分复核（≥85 分触发）
+    → cross_validator.py 高分复核（min_score_trigger 默认 85，需配置 api_key/env 并 enabled=true 才生效；另有 40–65 分随机抽样 20% 通道）
     → reporter.py 生成 Markdown 报告
     → sse.py 推送结果到前端
 ```
