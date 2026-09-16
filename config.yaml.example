@@ -18,12 +18,33 @@ logging:
   retention_days: 7
   path: "logs/app.log"
 
+# 定时清理（main.py start_cleanup_scheduler）
+cleanup:
+  enabled: true          # false 关闭定时清理
+  interval_hours: 24     # 清理扫描间隔（小时）
+
+# 数据库定时备份（main.py start_backup_scheduler / 面板 post_backup 同读此节）
+backup:
+  enabled: true
+  interval_hours: 6      # 备份间隔（小时）
+  keep_days: 30          # 备份保留天数
+  backup_dir: "backups"  # 备份输出目录
+
 ocr:
   preprocess_enabled: true
   threshold: 128
 
+# 报告输出根目录（相对路径则相对项目根）
+report_dir: "./reports"
+
 report:
   company_name: "游戏公司"
+
+# 漏斗转化率基线（app_routes.py 面板对照用；缺省时用代码内置值）
+funnel:
+  baselines:
+    待筛选_to_面试中: 0.40
+    面试中_to_已通过: 0.35
 
 llm:
   api_key_env: "DEEPSEEK_API_KEY"
