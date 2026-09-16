@@ -229,3 +229,26 @@ portfolio_domains:
   - "notion.so"
   - "figma.com"
   - "dribbble.com"
+
+# ── 以下三节为 916p-a4-009 补齐（代码有读取点、模板原缺失）──
+
+archive:                      # archive.py:39-45（归档保留策略）
+  enabled: true               # false 关闭归档
+  retention_days: 90          # 归档保留天数（默认 90）
+  archive_dir: "archives"     # 归档输出目录（相对路径基于 cwd）
+
+cross_validation:             # cross_validator.py:48-58（二次交叉复核，LLM）
+  enabled: false              # 默认关闭；开启需同时配置 api_key 或 api_key_env
+  api_key_env: "CLAUDE_API_KEY"  # 从环境变量读密钥（勿在模板写真实密钥）
+  # api_key: ""               # 亦可直接配置（优先级高于环境变量；勿提交真实值）
+  base_url: ""                # 留空走默认端点
+  model: "claude-opus-4-6"
+  min_score_trigger: 85       # 高分复核触发线
+  max_tokens: 4096
+  timeout: 180.0
+  max_retries: 2
+
+cleanup:                      # cleanup.py:25-27 补齐子键（enabled/interval_hours 已有）
+  retention_days: 7           # 入库简历保留天数（默认 7）
+  eliminated_retention_days: 1  # 已淘汰简历保留天数（默认 1）
+  cleanup_dir: "archives/cleanup"  # 清理输出目录
