@@ -205,7 +205,7 @@ Windows 额外步骤：将 Tesseract 便携版解压到 `dist/简历评估/tesse
 ## 运行测试
 
 ```bash
-python3 -m pytest tests/ -v
+python -m pytest tests/ -v
 ```
 
 ---
